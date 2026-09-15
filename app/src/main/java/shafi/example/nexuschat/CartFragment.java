@@ -1,4 +1,4 @@
-package shafi.example.bottomnav;
+package shafi.example.nexuschat;
 
 
 import android.os.Bundle;
@@ -13,10 +13,10 @@ import android.view.ViewGroup;
 /**
  * A simple {@link Fragment} subclass.
  */
-public class HomeFragment extends Fragment {
+public class CartFragment extends Fragment {
 
 
-    public HomeFragment() {
+    public CartFragment() {
         // Required empty public constructor
     }
 
@@ -25,7 +25,7 @@ public class HomeFragment extends Fragment {
     public View onCreateView(LayoutInflater inflater, ViewGroup container,
                              Bundle savedInstanceState) {
         // Inflate the layout for this fragment
-        return inflater.inflate(R.layout.fragment_home, container, false);
+        return inflater.inflate(R.layout.fragment_cart, container, false);
     }
 
 }

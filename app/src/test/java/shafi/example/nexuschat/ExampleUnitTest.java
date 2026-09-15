@@ -1,4 +1,4 @@
-package shafi.example.bottomnav;
+package shafi.example.nexuschat;
 
 import org.junit.Test;
 

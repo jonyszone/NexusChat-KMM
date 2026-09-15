@@ -1,4 +1,4 @@
-package shafi.example.bottomnav;
+package shafi.example.nexuschat;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
@@ -10,7 +10,7 @@ import android.view.MenuItem;
 
 import com.google.android.material.bottomnavigation.BottomNavigationView;
 
-public class MainActivity extends AppCompatActivity {
+public class NexusChatActivity extends AppCompatActivity {
 
     private BottomNavigationView bottomNavigationView;
     private HomeFragment homeFragment;

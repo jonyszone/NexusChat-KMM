@@ -1,4 +1,4 @@
-package shafi.example.bottomnav;
+package shafi.example.nexuschat;
 
 import android.content.Context;
 
@@ -22,6 +22,6 @@ public class ExampleInstrumentedTest {
         // Context of the app under test.
         Context appContext = InstrumentationRegistry.getInstrumentation().getTargetContext();
 
-        assertEquals("shafi.example.bottomnav", appContext.getPackageName());
+        assertEquals("shafi.example.nexuschat", appContext.getPackageName());
     }
 }
