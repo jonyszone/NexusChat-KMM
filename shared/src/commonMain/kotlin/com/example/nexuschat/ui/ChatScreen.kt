@@ -1,6 +1,7 @@
 package com.example.nexuschat.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,22 +12,24 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.AssistChip
-import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -46,9 +49,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.nexuschat.data.model.AiModel
 import com.example.nexuschat.data.model.AvailableModels
@@ -57,6 +64,15 @@ import com.example.nexuschat.data.model.ChatRole
 import com.example.nexuschat.presentation.ChatEvent
 import com.example.nexuschat.presentation.ChatUiState
 import com.example.nexuschat.presentation.ChatViewModel
+
+private val WhatsAppGreen = Color(0xFF008069)
+private val WhatsAppLightGreen = Color(0xFFD9FDD3)
+private val WhatsAppDarkGreen = Color(0xFF005C4B)
+private val WhatsAppChatWallpaper = Color(0xFFEFEAE2)
+private val WhatsAppIncoming = Color(0xFFFFFFFF)
+private val WhatsAppText = Color(0xFF111B21)
+private val WhatsAppMuted = Color(0xFF667781)
+private val WhatsAppDivider = Color(0xFFE9EDEF)
 
 /**
  * Entry point bound to a shared ViewModel.
@@ -79,7 +95,6 @@ fun ChatScreen(
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatContent(
     state: ChatUiState,
@@ -115,15 +130,13 @@ fun ChatContent(
     }
 
     Scaffold(
+        containerColor = WhatsAppChatWallpaper,
         topBar = {
-            CenterAlignedTopAppBar(
-                title = { Text("NexusChat") },
-                actions = {
-                    ModelSwitcher(
-                        current = state.currentModel,
-                        onSelect = onSwitchModel
-                    )
-                }
+            WhatsAppHeader(
+                currentModel = state.currentModel,
+                isStreaming = state.isStreaming,
+                onSwitchModel = onSwitchModel,
+                onOpenSettings = onOpenSettings
             )
         },
         snackbarHost = { SnackbarHost(snackbar) },
@@ -140,25 +153,79 @@ fun ChatContent(
             )
         }
     ) { padding ->
-        LazyColumn(
-            state = listState,
-            modifier = Modifier.fillMaxSize().padding(padding),
-            contentPadding = PaddingValues(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ChatWallpaper(Modifier.fillMaxSize().padding(padding)) {
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(start = 10.dp, end = 10.dp, top = 12.dp, bottom = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                if (state.messages.isEmpty() && state.streamingText.isEmpty()) {
+                    item(key = "__empty__") { EmptyChatIntro(state.currentModel.displayName) }
+                }
+                items(state.messages, key = { it.id }) { msg ->
+                    MessageBubble(msg)
+                }
+                if (state.streamingText.isNotEmpty()) {
+                    item(key = "__streaming__") {
+                        StreamingBubble(state.streamingText, state.currentModel.displayName)
+                    }
+                }
+                if (state.isStreaming && state.streamingText.isEmpty()) {
+                    item(key = "__thinking__") { TypingBubble(state.currentModel.displayName) }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun WhatsAppHeader(
+    currentModel: AiModel,
+    isStreaming: Boolean,
+    onSwitchModel: (AiModel) -> Unit,
+    onOpenSettings: () -> Unit
+) {
+    Surface(color = Color.White, shadowElevation = 2.dp) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            items(state.messages, key = { it.id }) { msg ->
-                MessageBubble(msg)
+            Text("‹", color = WhatsAppMuted, style = MaterialTheme.typography.headlineMedium)
+            Spacer(Modifier.width(6.dp))
+            Box(
+                modifier = Modifier.size(42.dp).clip(CircleShape).background(WhatsAppGreen),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("N", color = Color.White, fontWeight = FontWeight.Bold)
             }
-            if (state.streamingText.isNotEmpty()) {
-                item(key = "__streaming__") {
-                    StreamingBubble(state.streamingText, state.currentModel.displayName)
-                }
+            Spacer(Modifier.width(10.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "NexusChat",
+                    color = WhatsAppText,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = if (isStreaming) "typing…" else "online • BYOK private chat",
+                    color = WhatsAppMuted,
+                    style = MaterialTheme.typography.labelMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
-            if (state.isStreaming && state.streamingText.isEmpty()) {
-                item(key = "__thinking__") {
-                    AssistChip(onClick = {}, label = { Text(" thinking… ") })
-                }
-            }
+            ModelSwitcher(current = currentModel, onSelect = onSwitchModel)
+            Text(
+                text = "🔐",
+                color = WhatsAppGreen,
+                modifier = Modifier.padding(horizontal = 8.dp).clickable { onOpenSettings() },
+                style = MaterialTheme.typography.titleMedium
+            )
+            Text("⋮", color = WhatsAppMuted, style = MaterialTheme.typography.titleLarge)
         }
     }
 }
@@ -169,14 +236,22 @@ private fun ModelSwitcher(current: AiModel, onSelect: (AiModel) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     ExposedDropdownMenuBox(
         expanded = expanded,
-        onExpandedChange = { expanded = !expanded },
-        modifier = Modifier.padding(end = 8.dp)
+        onExpandedChange = { expanded = !expanded }
     ) {
         AssistChip(
             onClick = { expanded = true },
-            label = { Text(current.displayName, maxLines = 1) },
+            label = {
+                Text(
+                    current.displayName,
+                    color = WhatsAppDarkGreen,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            },
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
-            modifier = Modifier.menuAnchor().widthIn(max = 220.dp)
+            modifier = Modifier
+                .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, enabled = true)
+                .widthIn(max = 132.dp)
         )
         ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             AvailableModels.all.forEach { model ->
@@ -193,6 +268,53 @@ private fun ModelSwitcher(current: AiModel, onSelect: (AiModel) -> Unit) {
 }
 
 @Composable
+private fun ChatWallpaper(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    Box(modifier.background(WhatsAppChatWallpaper)) {
+        Column(
+            modifier = Modifier.fillMaxSize().padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp)
+        ) {
+            repeat(12) { row ->
+                Row(horizontalArrangement = Arrangement.spacedBy(28.dp)) {
+                    repeat(5) { col ->
+                        val mark = when ((row + col) % 4) {
+                            0 -> "✦"
+                            1 -> "◌"
+                            2 -> "♡"
+                            else -> "⌁"
+                        }
+                        Text(mark, color = Color(0x1A667781), style = MaterialTheme.typography.titleMedium)
+                    }
+                }
+            }
+        }
+        content()
+    }
+}
+
+@Composable
+private fun EmptyChatIntro(modelName: String) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(top = 36.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Surface(
+            color = Color(0xFFFFF7D6),
+            shape = RoundedCornerShape(14.dp),
+            tonalElevation = 0.dp,
+            modifier = Modifier.widthIn(max = 320.dp)
+        ) {
+            Text(
+                text = "Messages are private to this device. Start chatting with $modelName.",
+                color = Color(0xFF54656F),
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
+            )
+        }
+    }
+}
+
+@Composable
 private fun MessageBubble(msg: ChatMessage) {
     val isUser = msg.role == ChatRole.USER
     Row(
@@ -200,17 +322,39 @@ private fun MessageBubble(msg: ChatMessage) {
         horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
     ) {
         Surface(
-            tonalElevation = if (isUser) 3.dp else 1.dp,
-            shape = RoundedCornerShape(14.dp),
-            modifier = Modifier.widthIn(max = 340.dp)
+            color = if (isUser) WhatsAppLightGreen else WhatsAppIncoming,
+            tonalElevation = 1.dp,
+            shadowElevation = 1.dp,
+            shape = if (isUser) {
+                RoundedCornerShape(topStart = 18.dp, topEnd = 4.dp, bottomStart = 18.dp, bottomEnd = 18.dp)
+            } else {
+                RoundedCornerShape(topStart = 4.dp, topEnd = 18.dp, bottomStart = 18.dp, bottomEnd = 18.dp)
+            },
+            modifier = Modifier.widthIn(max = 352.dp)
         ) {
-            Column(Modifier.padding(10.dp)) {
+            Column(Modifier.padding(start = 11.dp, top = 8.dp, end = 8.dp, bottom = 5.dp)) {
                 if (!isUser && msg.modelId != null) {
-                    Text(msg.modelId, style = MaterialTheme.typography.labelSmall)
-                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        msg.modelId,
+                        color = WhatsAppGreen,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(Modifier.height(3.dp))
                 }
                 MarkdownLite(msg.content)
-                CopyButton(msg.content)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    CopyButton(msg.content)
+                    Text("now", color = WhatsAppMuted, style = MaterialTheme.typography.labelSmall)
+                    if (isUser) {
+                        Spacer(Modifier.width(3.dp))
+                        Text("✓✓", color = WhatsAppGreen, style = MaterialTheme.typography.labelSmall)
+                    }
+                }
             }
         }
     }
@@ -220,17 +364,39 @@ private fun MessageBubble(msg: ChatMessage) {
 private fun StreamingBubble(text: String, modelName: String) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) {
         Surface(
+            color = WhatsAppIncoming,
             tonalElevation = 1.dp,
-            shape = RoundedCornerShape(14.dp),
-            modifier = Modifier.widthIn(max = 340.dp)
+            shadowElevation = 1.dp,
+            shape = RoundedCornerShape(topStart = 4.dp, topEnd = 18.dp, bottomStart = 18.dp, bottomEnd = 18.dp),
+            modifier = Modifier.widthIn(max = 352.dp)
         ) {
-            Column(Modifier.padding(10.dp)) {
-                Text(modelName, style = MaterialTheme.typography.labelSmall)
+            Column(Modifier.padding(11.dp)) {
+                Text(modelName, color = WhatsAppGreen, style = MaterialTheme.typography.labelSmall)
                 Spacer(Modifier.height(4.dp))
                 SelectionContainer {
-                    // Blinking cursor gives smooth streaming affordance.
-                    Text(text + "▍", style = MaterialTheme.typography.bodyMedium)
+                    Text(text + "▍", color = WhatsAppText, style = MaterialTheme.typography.bodyMedium)
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TypingBubble(modelName: String) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) {
+        Surface(
+            color = WhatsAppIncoming,
+            tonalElevation = 1.dp,
+            shadowElevation = 1.dp,
+            shape = RoundedCornerShape(topStart = 4.dp, topEnd = 18.dp, bottomStart = 18.dp, bottomEnd = 18.dp)
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(modelName, color = WhatsAppGreen, style = MaterialTheme.typography.labelSmall)
+                Spacer(Modifier.width(8.dp))
+                Text("typing…", color = WhatsAppMuted, style = MaterialTheme.typography.bodySmall)
             }
         }
     }
@@ -245,31 +411,28 @@ private fun StreamingBubble(text: String, modelName: String) {
 private fun MarkdownLite(content: String) {
     val parts = remember(content) { content.split("```") }
     if (parts.size == 1) {
-        SelectionContainer { Text(parts[0], style = MaterialTheme.typography.bodyMedium) }
+        SelectionContainer { Text(parts[0], color = WhatsAppText, style = MaterialTheme.typography.bodyMedium) }
         return
     }
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         parts.forEachIndexed { i, part ->
             if (i % 2 == 0) {
                 if (part.isNotEmpty()) {
-                    SelectionContainer { Text(part, style = MaterialTheme.typography.bodyMedium) }
+                    SelectionContainer { Text(part, color = WhatsAppText, style = MaterialTheme.typography.bodyMedium) }
                 }
             } else {
                 Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    tonalElevation = 2.dp,
+                    shape = RoundedCornerShape(10.dp),
+                    color = Color(0xFFEEF1F0),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     SelectionContainer {
                         Text(
                             part.trim('\n'),
+                            color = WhatsAppText,
                             fontFamily = FontFamily.Monospace,
                             style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier
-                                .background(
-                                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
-                                )
-                                .padding(8.dp)
+                            modifier = Modifier.padding(9.dp)
                         )
                     }
                 }
@@ -281,10 +444,13 @@ private fun MarkdownLite(content: String) {
 @Composable
 private fun CopyButton(text: String) {
     val clipboard = LocalClipboardManager.current
-    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
-        IconButton(onClick = { clipboard.setText(AnnotatedString(text)) }) {
-            Icon(Icons.Default.ContentCopy, contentDescription = "Copy")
-        }
+    IconButton(onClick = { clipboard.setText(AnnotatedString(text)) }, modifier = Modifier.size(32.dp)) {
+        Icon(
+            Icons.Default.ContentCopy,
+            contentDescription = "Copy",
+            tint = WhatsAppMuted,
+            modifier = Modifier.size(16.dp)
+        )
     }
 }
 
@@ -296,37 +462,60 @@ private fun InputBar(
     onSend: () -> Unit,
     onCancel: () -> Unit
 ) {
-    Surface(tonalElevation = 2.dp) {
+    Surface(color = WhatsAppChatWallpaper, tonalElevation = 0.dp) {
         Row(
-            Modifier.fillMaxWidth().padding(8.dp),
+            Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 6.dp, bottom = 8.dp),
             verticalAlignment = Alignment.Bottom
         ) {
-            OutlinedTextField(
-                value = value,
-                onValueChange = onValue,
-                modifier = Modifier.weight(1f),
-                placeholder = { Text("Message…") },
-                maxLines = 4,
-                shape = RoundedCornerShape(20.dp)
-            )
-            if (isStreaming) {
-                IconButton(onClick = onCancel) {
-                    Icon(Icons.Default.Stop, contentDescription = "Stop")
-                }
-            } else {
-                IconButton(
-                    onClick = onSend,
-                    enabled = value.isNotBlank()
+            Surface(
+                color = Color.White,
+                shape = RoundedCornerShape(28.dp),
+                shadowElevation = 1.dp,
+                modifier = Modifier.weight(1f)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp, top = 2.dp, bottom = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(Icons.Default.Send, contentDescription = "Send")
+                    Text("☺", color = WhatsAppMuted, style = MaterialTheme.typography.titleMedium)
+                    Spacer(Modifier.width(6.dp))
+                    OutlinedTextField(
+                        value = value,
+                        onValueChange = onValue,
+                        modifier = Modifier.weight(1f),
+                        placeholder = { Text("Message", color = WhatsAppMuted) },
+                        maxLines = 4,
+                        shape = RoundedCornerShape(24.dp)
+                    )
+                    Text("📎", color = WhatsAppMuted, modifier = Modifier.padding(horizontal = 6.dp))
+                    Text("📷", color = WhatsAppMuted, modifier = Modifier.padding(horizontal = 6.dp))
+                }
+            }
+            Spacer(Modifier.width(7.dp))
+            Surface(
+                color = WhatsAppGreen,
+                shape = CircleShape,
+                shadowElevation = 2.dp,
+                modifier = Modifier.size(48.dp)
+            ) {
+                if (isStreaming) {
+                    IconButton(onClick = onCancel) {
+                        Icon(Icons.Default.Stop, contentDescription = "Stop", tint = Color.White)
+                    }
+                } else {
+                    IconButton(onClick = onSend, enabled = value.isNotBlank()) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.Send,
+                            contentDescription = "Send",
+                            tint = if (value.isNotBlank()) Color.White else Color.White.copy(alpha = 0.45f)
+                        )
+                    }
                 }
             }
         }
     }
 }
 
-// Preview-friendly overload without ViewModel / icons dependency issues.
-@Composable
-private fun ClosePreviewHint() {
-    Icon(Icons.Default.Close, contentDescription = null)
-}
+// Keep a local reference to a subtle divider color for future chat-list work.
+@Suppress("unused")
+private val WhatsAppSubtleDivider = WhatsAppDivider
