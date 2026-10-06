@@ -1,7 +1,6 @@
 package com.example.nexuschat.ui
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,10 +19,17 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.EmojiEmotions
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.DropdownMenuItem
@@ -34,7 +40,6 @@ import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -192,8 +197,10 @@ private fun WhatsAppHeader(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("‹", color = WhatsAppMuted, style = MaterialTheme.typography.headlineMedium)
-            Spacer(Modifier.width(6.dp))
+            IconButton(onClick = onOpenSettings, modifier = Modifier.size(40.dp)) {
+                Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = WhatsAppText)
+            }
+            Spacer(Modifier.width(2.dp))
             Box(
                 modifier = Modifier.size(42.dp).clip(CircleShape).background(WhatsAppGreen),
                 contentAlignment = Alignment.Center
@@ -219,13 +226,12 @@ private fun WhatsAppHeader(
                 )
             }
             ModelSwitcher(current = currentModel, onSelect = onSwitchModel)
-            Text(
-                text = "🔐",
-                color = WhatsAppGreen,
-                modifier = Modifier.padding(horizontal = 8.dp).clickable { onOpenSettings() },
-                style = MaterialTheme.typography.titleMedium
-            )
-            Text("⋮", color = WhatsAppMuted, style = MaterialTheme.typography.titleLarge)
+            IconButton(onClick = onOpenSettings, modifier = Modifier.size(40.dp)) {
+                Icon(Icons.Default.Lock, contentDescription = "Settings and privacy", tint = WhatsAppGreen)
+            }
+            IconButton(onClick = {}, modifier = Modifier.size(40.dp)) {
+                Icon(Icons.Default.MoreVert, contentDescription = "More options", tint = WhatsAppText)
+            }
         }
     }
 }
@@ -477,18 +483,27 @@ private fun InputBar(
                     modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp, top = 2.dp, bottom = 2.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("☺", color = WhatsAppMuted, style = MaterialTheme.typography.titleMedium)
-                    Spacer(Modifier.width(6.dp))
-                    OutlinedTextField(
+                    IconButton(onClick = {}, modifier = Modifier.size(36.dp)) {
+                        Icon(Icons.Default.EmojiEmotions, contentDescription = "Emoji", tint = WhatsAppMuted)
+                    }
+                    BasicTextField(
                         value = value,
                         onValueChange = onValue,
-                        modifier = Modifier.weight(1f),
-                        placeholder = { Text("Message", color = WhatsAppMuted) },
+                        modifier = Modifier.weight(1f).padding(horizontal = 6.dp, vertical = 10.dp),
+                        textStyle = MaterialTheme.typography.bodyLarge.copy(color = WhatsAppText),
+                        cursorBrush = androidx.compose.ui.graphics.SolidColor(WhatsAppGreen),
                         maxLines = 4,
-                        shape = RoundedCornerShape(24.dp)
+                        decorationBox = { innerTextField ->
+                            if (value.isEmpty()) Text("Message", color = WhatsAppMuted, style = MaterialTheme.typography.bodyLarge)
+                            innerTextField()
+                        }
                     )
-                    Text("📎", color = WhatsAppMuted, modifier = Modifier.padding(horizontal = 6.dp))
-                    Text("📷", color = WhatsAppMuted, modifier = Modifier.padding(horizontal = 6.dp))
+                    IconButton(onClick = {}, modifier = Modifier.size(36.dp)) {
+                        Icon(Icons.Default.AttachFile, contentDescription = "Attach", tint = WhatsAppMuted)
+                    }
+                    IconButton(onClick = {}, modifier = Modifier.size(36.dp)) {
+                        Icon(Icons.Default.CameraAlt, contentDescription = "Camera", tint = WhatsAppMuted)
+                    }
                 }
             }
             Spacer(Modifier.width(7.dp))

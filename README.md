@@ -123,7 +123,7 @@ All shared Kotlin code lives in `shared/src/commonMain`; Android, iOS and Deskto
 - SQLDelight schema & DAO generation for chat‑session persistence.  
 - Unit‑test the delta parsers (`parseOpenAiDelta`, `parseAnthropicDelta`, `parseGeminiDelta`).  
 - Add CI pipelines (GitHub Actions) that build Android, iOS, and Desktop targets.  
-- Replace the stub fragments with the real Compose‑based `ChatScreen`.
+- Compose-based `ChatScreen` is implemented in the shared module and wired to the Android entry point.
 
 ---
 

@@ -10,7 +10,7 @@ import com.example.nexuschat.data.network.KtorLlmStreamingClient
 import com.example.nexuschat.domain.repository.InMemoryChatStorage
 import com.example.nexuschat.domain.repository.OfflineFirstChatRepository
 import com.example.nexuschat.presentation.ChatViewModel
-import com.example.nexuschat.ui.ChatScreen
+import com.example.nexuschat.ui.NexusApp
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
@@ -23,7 +23,7 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val viewModel = remember { createChatViewModel() }
-            ChatScreen(viewModel = viewModel)
+            NexusApp(viewModel = viewModel)
         }
     }
 
