@@ -108,3 +108,30 @@ class OfflineFirstChatRepository(
         storage.appendMessage(sessionId, assistant)
     }
 }
+
+/** Uses the real transport when a provider key exists, otherwise keeps demo mode usable. */
+class KeyAwareChatRepository(
+    private val real: ChatRepository,
+    private val demo: ChatRepository,
+    private val keys: com.example.nexuschat.data.network.ApiKeyProvider
+) : ChatRepository {
+    override fun streamReply(
+        model: AiModel,
+        history: List<ChatMessage>,
+        systemPrompt: String?
+    ): Flow<String> = kotlinx.coroutines.flow.flow {
+        val repository = if (keys.keyFor(model.provider).isNullOrBlank()) demo else real
+        repository.streamReply(model, history, systemPrompt).collect { emit(it) }
+    }
+
+    override fun observeSessions(): Flow<List<ChatSession>> = demo.observeSessions()
+
+    override fun observeMessages(sessionId: String): Flow<List<ChatMessage>> =
+        demo.observeMessages(sessionId)
+
+    override suspend fun ensureSession(session: ChatSession) = demo.ensureSession(session)
+
+    override suspend fun persistTurn(sessionId: String, user: ChatMessage, assistant: ChatMessage) {
+        demo.persistTurn(sessionId, user, assistant)
+    }
+}

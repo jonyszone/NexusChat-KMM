@@ -18,9 +18,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Archive
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Chat
@@ -53,6 +54,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.nexuschat.presentation.ChatViewModel
+import com.example.nexuschat.data.network.ApiKeyStore
 
 private val NexusGreen = Color(0xFF25D366)
 private val NexusDarkGreen = Color(0xFF128C7E)
@@ -62,15 +64,17 @@ private val NexusMuted = Color(0xFF667781)
 private enum class NexusTab { CHATS, UPDATES, COMMUNITIES, CALLS }
 
 @Composable
-fun NexusApp(viewModel: ChatViewModel) {
+fun NexusApp(viewModel: ChatViewModel, apiKeyStore: ApiKeyStore? = null) {
     var tab by remember { mutableStateOf(NexusTab.CHATS) }
     var detail by remember { mutableStateOf(false) }
     var profile by remember { mutableStateOf(false) }
+    var settings by remember { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
 
     when {
+        settings && apiKeyStore != null -> SettingsScreen(keyStore = apiKeyStore, onBack = { settings = false })
         profile -> ProfileScreen(onBack = { profile = false })
-        detail -> ChatScreen(viewModel = viewModel, onOpenSettings = { profile = true })
+        detail -> ChatScreen(viewModel = viewModel, onOpenSettings = { settings = true })
         else -> Scaffold(
             containerColor = Color.White,
             topBar = {
@@ -114,7 +118,7 @@ fun NexusApp(viewModel: ChatViewModel) {
                 if (menu) {
                     HomeMenu(
                         onDismiss = { menu = false },
-                        onSettings = { menu = false; profile = true },
+                        onSettings = { menu = false; settings = true },
                         modifier = Modifier.align(Alignment.TopEnd)
                     )
                 }
@@ -142,7 +146,12 @@ private fun ChatsScreen(onOpenChat: () -> Unit) {
             }
         }
         Row(Modifier.fillMaxWidth().clickable { }.padding(horizontal = 18.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.Archive, "Archived", tint = NexusMuted); Spacer(Modifier.width(22.dp)); Text("Archived", fontWeight = FontWeight.Medium) }
-        val chats = listOf("Robiul Bro CTL" to "hm", "MD Sir CTL" to "Voice call", "Toufik Vai CTL" to "api/donor-list === field add hobe bloo...", "@iamshafiulislam (You)" to "/Users/cyberdynetechnologyltd/de...", "Tolarbagh Water ATM Notice" to "~ Irfan Hossain joined using a group", "Jahangir mondol" to "Alhamdulillah", "Ma" to "Yesterday")
+        val chats = listOf(
+            "Nexus AI" to "Ask anything privately on this device",
+            "Project discussion" to "Your recent conversation",
+            "Family group" to "No messages yet",
+            "Saved messages" to "Keep notes and prompts here"
+        )
         LazyColumn { items(chats) { (name, preview) -> ChatRow(name, preview, onOpenChat) } }
     }
 }
@@ -186,10 +195,10 @@ private fun EmptyTab(title: String, message: String) { Column(Modifier.fillMaxSi
 @Composable
 private fun ProfileScreen(onBack: () -> Unit) {
     Column(Modifier.fillMaxSize().background(Color.White)) {
-        Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Back") }; Text("Profile", style = MaterialTheme.typography.headlineSmall) }
+        Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }; Text("Profile", style = MaterialTheme.typography.headlineSmall) }
         HorizontalDivider(color = Color(0xFFE9EDEF))
         Column(Modifier.fillMaxWidth().padding(top = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) { Box(Modifier.size(160.dp).clip(CircleShape).background(Color(0xFFD9EAD3)), contentAlignment = Alignment.Center) { Text("A", style = MaterialTheme.typography.displayLarge, color = NexusDarkGreen) } }
-        ProfileItem("Name", "abu Nusayba"); ProfileItem("About", "Set About"); ProfileItem("Username", "iamshafiulislam"); ProfileItem("Phone", "+880 1773-405828"); ProfileItem("Links", "Add links")
+        ProfileItem("Name", "Nexus Chat user"); ProfileItem("About", "Set About"); ProfileItem("Username", "Set username"); ProfileItem("Phone", "Add phone number"); ProfileItem("Links", "Add links")
     }
 }
 
@@ -199,5 +208,5 @@ private fun ProfileItem(title: String, value: String) { Row(Modifier.fillMaxWidt
 @Composable
 private fun HomeMenu(onDismiss: () -> Unit, onSettings: () -> Unit, modifier: Modifier = Modifier) { Surface(color = Color.White, shape = RoundedCornerShape(12.dp), shadowElevation = 8.dp, modifier = modifier.padding(top = 8.dp, end = 8.dp).width(220.dp)) { Column { listOf("New group", "Broadcast lists", "Linked devices", "Starred", "Read all").forEach { Text(it, modifier = Modifier.fillMaxWidth().clickable { onDismiss() }.padding(horizontal = 20.dp, vertical = 14.dp), color = NexusText) }; Text("Settings", modifier = Modifier.fillMaxWidth().clickable { onSettings() }.padding(horizontal = 20.dp, vertical = 14.dp)) } } }
 
-private fun NexusTab.icon() = when (this) { NexusTab.CHATS -> Icons.Default.Chat; NexusTab.UPDATES -> Icons.Default.Update; NexusTab.COMMUNITIES -> Icons.Default.Groups; NexusTab.CALLS -> Icons.Default.Call }
+private fun NexusTab.icon() = when (this) { NexusTab.CHATS -> Icons.AutoMirrored.Filled.Chat; NexusTab.UPDATES -> Icons.Default.Update; NexusTab.COMMUNITIES -> Icons.Default.Groups; NexusTab.CALLS -> Icons.Default.Call }
 private fun NexusTab.label() = when (this) { NexusTab.CHATS -> "Chats"; NexusTab.UPDATES -> "Updates"; NexusTab.COMMUNITIES -> "Communities"; NexusTab.CALLS -> "Calls" }

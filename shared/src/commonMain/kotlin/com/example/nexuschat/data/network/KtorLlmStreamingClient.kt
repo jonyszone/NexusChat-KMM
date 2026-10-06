@@ -33,6 +33,12 @@ interface ApiKeyProvider {
     suspend fun keyFor(provider: LlmProvider): String?
 }
 
+/** Read/write BYOK credentials. Implemented with platform secure storage. */
+interface ApiKeyStore : ApiKeyProvider {
+    suspend fun setKey(provider: LlmProvider, value: String)
+    suspend fun clearKey(provider: LlmProvider)
+}
+
 /** Thrown when no key is stored for the selected provider. */
 class MissingApiKeyException(val provider: LlmProvider) :
     IllegalStateException("No API key stored for $provider. Add it in Settings (BYOK).")

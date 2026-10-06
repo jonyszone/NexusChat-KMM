@@ -25,6 +25,10 @@ class DemoChatRepository : ChatRepository {
         )
     )
 
+    private val messagesBySession = mutableMapOf(
+        "demo-general" to seeded.toMutableList()
+    )
+
     override fun streamReply(model: AiModel, history: List<ChatMessage>, systemPrompt: String?): Flow<String> = flow {
         val prompt = history.lastOrNull { it.role.name == "USER" }?.content.orEmpty()
         val response = when {
@@ -44,9 +48,15 @@ class DemoChatRepository : ChatRepository {
         listOf(ChatSession("demo-general", "NexusChat demo", "gpt-4o-mini", createdAt = 1728000000000, updatedAt = 1728000120000))
     )
 
-    override fun observeMessages(sessionId: String): Flow<List<ChatMessage>> = flowOf(seeded)
+    override fun observeMessages(sessionId: String): Flow<List<ChatMessage>> =
+        flowOf(messagesBySession[sessionId]?.toList().orEmpty())
 
     override suspend fun ensureSession(session: ChatSession) = Unit
 
-    override suspend fun persistTurn(sessionId: String, user: ChatMessage, assistant: ChatMessage) = Unit
+    override suspend fun persistTurn(sessionId: String, user: ChatMessage, assistant: ChatMessage) {
+        messagesBySession.getOrPut(sessionId) { mutableListOf() }.apply {
+            add(user)
+            add(assistant)
+        }
+    }
 }

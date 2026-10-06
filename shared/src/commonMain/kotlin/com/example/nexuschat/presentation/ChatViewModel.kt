@@ -42,10 +42,22 @@ class ChatViewModel(
     private val repository: ChatRepository
 ) : ViewModel() {
 
+    private val sessionId = "demo-general"
+
     private val _ui = MutableStateFlow(ChatUiState())
     val ui: StateFlow<ChatUiState> = _ui.asStateFlow()
 
     private var streamJob: Job? = null
+
+    init {
+        viewModelScope.launch {
+            repository.observeMessages(sessionId).collect { persisted ->
+                if (!_ui.value.isStreaming) {
+                    _ui.update { it.copy(messages = persisted) }
+                }
+            }
+        }
+    }
 
     fun switchModel(model: AiModel) {
         _ui.update { it.copy(currentModel = model, lastEvent = null) }
@@ -101,6 +113,7 @@ class ChatViewModel(
                             content = acc.toString(),
                             modelId = snapshot.currentModel.id
                         )
+                        repository.persistTurn(sessionId, userMsg, assistant)
                         _ui.update { s ->
                             s.copy(
                                 messages = s.messages + assistant,
