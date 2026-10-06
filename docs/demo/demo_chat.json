@@ -1,0 +1,20 @@
+{
+  "profile": {
+    "name": "abu Nusayba",
+    "username": "iamshafiulislam",
+    "about": "Building NexusChat",
+    "phone": "+880 1773-405828"
+  },
+  "sessions": [
+    {
+      "id": "demo-general",
+      "title": "NexusChat demo",
+      "modelId": "gpt-4o-mini",
+      "messages": [
+        {"id":"demo-welcome","role":"ASSISTANT","content":"Welcome to NexusChat. This is local demo data for the first functional build.","timestampEpochMillis":1728000000000,"modelId":"gpt-4o-mini"},
+        {"id":"demo-question","role":"USER","content":"What can I do here?","timestampEpochMillis":1728000060000},
+        {"id":"demo-answer","role":"ASSISTANT","content":"Try the Chats, Updates, Communities, Calls, Profile, and Settings flows. Sending a message uses the demo repository until the real backend is connected.","timestampEpochMillis":1728000120000,"modelId":"gpt-4o-mini"}
+      ]
+    }
+  ]
+}
