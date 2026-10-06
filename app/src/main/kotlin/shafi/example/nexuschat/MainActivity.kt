@@ -4,8 +4,6 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.remember
-import com.example.nexuschat.data.demo.DemoChatRepository
-import com.example.nexuschat.presentation.ChatViewModel
 import com.example.nexuschat.ui.NexusApp
 
 class MainActivity : ComponentActivity() {
@@ -13,10 +11,8 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         setContent {
-            val viewModel = remember { createChatViewModel() }
-            NexusApp(viewModel = viewModel)
+            val container = remember { AppContainer(applicationContext) }
+            NexusApp(viewModel = container.chatViewModel, apiKeyStore = container.apiKeyStore)
         }
     }
-
-    private fun createChatViewModel(): ChatViewModel = ChatViewModel(DemoChatRepository())
 }
