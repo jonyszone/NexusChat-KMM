@@ -3,10 +3,12 @@ package shafi.example.nexuschat
 import android.content.Context
 import com.example.nexuschat.data.demo.DemoChatRepository
 import com.example.nexuschat.data.network.KtorLlmStreamingClient
-import com.example.nexuschat.domain.repository.InMemoryChatStorage
 import com.example.nexuschat.domain.repository.KeyAwareChatRepository
 import com.example.nexuschat.domain.repository.OfflineFirstChatRepository
+import com.example.nexuschat.domain.repository.SqlDelightChatStorage
 import com.example.nexuschat.presentation.ChatViewModel
+import com.example.nexuschat.db.NexusChatDatabase
+import app.cash.sqldelight.driver.android.AndroidSqliteDriver
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
@@ -24,9 +26,16 @@ class AppContainer(context: Context) {
     }
 
     private val demoRepository = DemoChatRepository()
+    private val database = NexusChatDatabase(
+        AndroidSqliteDriver(
+            schema = NexusChatDatabase.Schema,
+            context = context.applicationContext,
+            name = "nexuschat.db"
+        )
+    )
     private val realRepository = OfflineFirstChatRepository(
         llm = KtorLlmStreamingClient(httpClient, apiKeyStore),
-        storage = InMemoryChatStorage()
+        storage = SqlDelightChatStorage(database)
     )
 
     val chatViewModel = ChatViewModel(

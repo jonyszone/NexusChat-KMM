@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.nexuschat.data.model.AiModel
 import com.example.nexuschat.data.model.AvailableModels
 import com.example.nexuschat.data.model.ChatMessage
+import com.example.nexuschat.domain.repository.ChatSession
 import com.example.nexuschat.data.network.MissingApiKeyException
 import com.example.nexuschat.domain.repository.ChatRepository
 import kotlinx.coroutines.Job
@@ -24,6 +25,7 @@ sealed interface ChatEvent {
 
 /** Single source of truth for ChatScreen. */
 data class ChatUiState(
+    val sessions: List<ChatSession> = emptyList(),
     val messages: List<ChatMessage> = emptyList(),
     val streamingText: String = "",
     val isStreaming: Boolean = false,
@@ -50,6 +52,22 @@ class ChatViewModel(
     private var streamJob: Job? = null
 
     init {
+        viewModelScope.launch {
+            repository.ensureSession(
+                ChatSession(
+                    id = sessionId,
+                    title = "NexusChat demo",
+                    modelId = AvailableModels.Gpt4oMini.id,
+                    createdAt = 0L,
+                    updatedAt = 0L
+                )
+            )
+        }
+        viewModelScope.launch {
+            repository.observeSessions().collect { sessions ->
+                _ui.update { it.copy(sessions = sessions) }
+            }
+        }
         viewModelScope.launch {
             repository.observeMessages(sessionId).collect { persisted ->
                 if (!_ui.value.isStreaming) {

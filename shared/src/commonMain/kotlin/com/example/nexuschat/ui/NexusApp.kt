@@ -43,6 +43,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -55,6 +56,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.nexuschat.presentation.ChatViewModel
 import com.example.nexuschat.data.network.ApiKeyStore
+import com.example.nexuschat.domain.repository.ChatSession
 
 private val NexusGreen = Color(0xFF25D366)
 private val NexusDarkGreen = Color(0xFF128C7E)
@@ -65,6 +67,7 @@ private enum class NexusTab { CHATS, UPDATES, COMMUNITIES, CALLS }
 
 @Composable
 fun NexusApp(viewModel: ChatViewModel, apiKeyStore: ApiKeyStore? = null) {
+    val state by viewModel.ui.collectAsState()
     var tab by remember { mutableStateOf(NexusTab.CHATS) }
     var detail by remember { mutableStateOf(false) }
     var profile by remember { mutableStateOf(false) }
@@ -110,7 +113,7 @@ fun NexusApp(viewModel: ChatViewModel, apiKeyStore: ApiKeyStore? = null) {
         ) { padding ->
             Box(Modifier.fillMaxSize().padding(padding)) {
                 when (tab) {
-                    NexusTab.CHATS -> ChatsScreen(onOpenChat = { detail = true })
+                    NexusTab.CHATS -> ChatsScreen(sessions = state.sessions, onOpenChat = { detail = true })
                     NexusTab.UPDATES -> UpdatesScreen()
                     NexusTab.COMMUNITIES -> CommunitiesScreen()
                     NexusTab.CALLS -> CallsScreen()
@@ -138,7 +141,7 @@ private fun HomeTopBar(tab: NexusTab, menu: Boolean, onMenu: () -> Unit, onProfi
 }
 
 @Composable
-private fun ChatsScreen(onOpenChat: () -> Unit) {
+private fun ChatsScreen(sessions: List<ChatSession>, onOpenChat: () -> Unit) {
     Column(Modifier.fillMaxSize()) {
         Surface(color = Color(0xFFF3F1F2), shape = RoundedCornerShape(28.dp), modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
             Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -146,12 +149,11 @@ private fun ChatsScreen(onOpenChat: () -> Unit) {
             }
         }
         Row(Modifier.fillMaxWidth().clickable { }.padding(horizontal = 18.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.Archive, "Archived", tint = NexusMuted); Spacer(Modifier.width(22.dp)); Text("Archived", fontWeight = FontWeight.Medium) }
-        val chats = listOf(
-            "Nexus AI" to "Ask anything privately on this device",
-            "Project discussion" to "Your recent conversation",
-            "Family group" to "No messages yet",
-            "Saved messages" to "Keep notes and prompts here"
-        )
+        val chats = sessions.map { session ->
+            session.title to "Model: ${session.modelId}"
+        }.ifEmpty {
+            listOf("Nexus AI" to "Start a private conversation")
+        }
         LazyColumn { items(chats) { (name, preview) -> ChatRow(name, preview, onOpenChat) } }
     }
 }

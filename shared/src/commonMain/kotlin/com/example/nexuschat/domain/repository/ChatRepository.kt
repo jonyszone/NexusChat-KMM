@@ -4,7 +4,10 @@ import com.example.nexuschat.data.model.AiModel
 import com.example.nexuschat.data.model.ChatMessage
 import com.example.nexuschat.data.network.KtorLlmStreamingClient
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 
 /**
  * Chat session metadata. Message rows live separately so a session
@@ -110,6 +113,7 @@ class OfflineFirstChatRepository(
 }
 
 /** Uses the real transport when a provider key exists, otherwise keeps demo mode usable. */
+@OptIn(ExperimentalCoroutinesApi::class)
 class KeyAwareChatRepository(
     private val real: ChatRepository,
     private val demo: ChatRepository,
@@ -124,14 +128,23 @@ class KeyAwareChatRepository(
         repository.streamReply(model, history, systemPrompt).collect { emit(it) }
     }
 
-    override fun observeSessions(): Flow<List<ChatSession>> = demo.observeSessions()
+    override fun observeSessions(): Flow<List<ChatSession>> =
+        real.observeSessions().flatMapLatest { persisted ->
+            if (persisted.isEmpty()) demo.observeSessions() else flowOf(persisted)
+        }
 
     override fun observeMessages(sessionId: String): Flow<List<ChatMessage>> =
-        demo.observeMessages(sessionId)
+        real.observeMessages(sessionId).flatMapLatest { persisted ->
+            if (persisted.isEmpty()) demo.observeMessages(sessionId) else flowOf(persisted)
+        }
 
-    override suspend fun ensureSession(session: ChatSession) = demo.ensureSession(session)
+    override suspend fun ensureSession(session: ChatSession) {
+        real.ensureSession(session)
+        demo.ensureSession(session)
+    }
 
     override suspend fun persistTurn(sessionId: String, user: ChatMessage, assistant: ChatMessage) {
+        real.persistTurn(sessionId, user, assistant)
         demo.persistTurn(sessionId, user, assistant)
     }
 }

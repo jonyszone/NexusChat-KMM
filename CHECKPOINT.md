@@ -11,6 +11,7 @@ Updated: October 6, 2026
 - README module and production-readiness claims now match the actual code.
 - Personal-looking sample profile/chat data was replaced with neutral demo data.
 - Stale unused image/color resources were removed and launcher monochrome layers were added.
+- SQLDelight 2.3.2 schema, drivers, storage adapter, persistence tests, and repository-backed chat sessions are now wired.
 
 ## Current state
 
