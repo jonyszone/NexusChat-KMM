@@ -1,0 +1,44 @@
+CREATE TABLE chat_session (
+    id TEXT NOT NULL PRIMARY KEY,
+    title TEXT NOT NULL,
+    model_id TEXT NOT NULL,
+    system_prompt TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE chat_message (
+    id TEXT NOT NULL PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    role TEXT NOT NULL,
+    content TEXT NOT NULL,
+    timestamp_epoch_millis INTEGER NOT NULL,
+    model_id TEXT
+);
+
+selectSessions:
+SELECT id, title, model_id, system_prompt, created_at, updated_at
+FROM chat_session
+ORDER BY updated_at DESC;
+
+selectMessages:
+SELECT id, session_id, role, content, timestamp_epoch_millis, model_id
+FROM chat_message
+WHERE session_id = ?
+ORDER BY timestamp_epoch_millis ASC;
+
+upsertSession:
+INSERT OR REPLACE INTO chat_session(id, title, model_id, system_prompt, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?);
+
+insertMessage:
+INSERT OR REPLACE INTO chat_message(
+    id, session_id, role, content, timestamp_epoch_millis, model_id
+)
+VALUES (?, ?, ?, ?, ?, ?);
+
+deleteSession:
+DELETE FROM chat_session WHERE id = ?;
+
+deleteMessages:
+DELETE FROM chat_message WHERE session_id = ?;

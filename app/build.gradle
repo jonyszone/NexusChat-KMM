@@ -40,6 +40,7 @@ dependencies {
     implementation libs.androidx.lifecycle.runtime.ktx
     implementation libs.ktor.client.content.negotiation
     implementation libs.ktor.serialization.kotlinx.json
+    implementation libs.sqldelight.android.driver
 
     testImplementation libs.junit
     androidTestImplementation libs.androidx.test.junit

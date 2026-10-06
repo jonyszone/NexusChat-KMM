@@ -4,6 +4,15 @@ plugins {
     alias(libs.plugins.compose.multiplatform)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.sqldelight)
+}
+
+sqldelight {
+    databases {
+        create("NexusChatDatabase") {
+            packageName.set("com.example.nexuschat.db")
+        }
+    }
 }
 
 kotlin {
@@ -29,6 +38,8 @@ kotlin {
                 api libs.ktor.client.core
                 implementation libs.ktor.client.content.negotiation
                 implementation libs.ktor.serialization.kotlinx.json
+                implementation libs.sqldelight.runtime
+                implementation libs.sqldelight.coroutines.extensions
             }
         }
         commonTest {
@@ -39,11 +50,13 @@ kotlin {
         androidMain {
             dependencies {
                 api libs.ktor.client.okhttp
+                implementation libs.sqldelight.android.driver
             }
         }
         jvmMain {
             dependencies {
                 implementation libs.ktor.client.cio
+                implementation libs.sqldelight.sqlite.driver
             }
         }
     }
