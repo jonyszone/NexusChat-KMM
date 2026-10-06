@@ -1,13 +1,13 @@
 # NexusChat KMP
 
-**NexusChat** is a cross‑platform, client‑side Bring‑Your‑Own‑Key (BYOK) AI chat application built with **Kotlin Multiplatform (KMP)** and **Compose Multiplatform**.
+**NexusChat** is a Kotlin Multiplatform (KMP) and Compose Multiplatform AI chat application. The current Android target is demo-functional; production BYOK storage, persistence, and real transport are being integrated incrementally.
 
 ---
 
 ## 1. Core Architecture
 
-- **Tech Stack:** Kotlin Multiplatform, Ktor Client (with SSE plugin), Kotlin Coroutines & Flows, Compose Multiplatform for UI, SQLDelight for local chat persistence.
-- **Privacy‑First (BYOK):** API keys (OpenAI, Claude, Gemini, DeepSeek) are stored encrypted strictly on the client device using native secure storage mechanisms via KMP abstractions.
+- **Tech Stack:** Kotlin Multiplatform, Ktor Client, Kotlin Coroutines & Flows, Compose Multiplatform for UI.
+- **Planned production layers:** encrypted BYOK storage, SQLDelight local persistence, and a real sync/message transport behind repository interfaces.
 
 ---
 
@@ -30,61 +30,27 @@
 
 ---
 
-## 3. Project Module Layout
+## 3. Current Project Module Layout
 
 ```
 NexusChat-KMM/
 ├─ gradle/
-├─ build.gradle.kts (root)
-├─ settings.gradle
-├─ gradle.properties
-├─ shared/                     # common KMP source set
-│  └─ src/
-│     └─ commonMain/
-│        └─ kotlin/
-│           └─ com/example/nexuschat/
-│              ├─ data/
-│              │  ├─ model/            ChatMessage.kt, AiModel.kt
-│              │  ├─ network/          KtorLlmStreamingClient.kt
-│              │  └─ persistence/      SQLDelight schema + DAOs
-│              ├─ domain/
-│              │  └─ repository/      ChatRepository.kt, ChatStorage expect/actual
-│              └─ ui/
-│                 └─ ChatScreen.kt    Compose Multiplatform main chat view
-├─ androidApp/                 # Android application module
-│  └─ src/
-│     └─ main/
-│        ├─ AndroidManifest.xml   (label = "@string/app_name", package = "shafi.example.nexuschat")
-│        ├─ kotlin/
-│        │   └─ com/example/nexuschat/android/
-│        │       ├─ AesKeyStoreProvider.kt   (EncryptedSharedPreferences + Keystore)
-│        │       └─ SqlDelightChatStorage.kt (SQLDelight actual)
-│        └─ res/
-│           └─ values/strings.xml   (app_name = "NexusChat")
-├─ iosApp/                     # iOS application module (iOSX64 / iosArm64)
-│  └─ src/
-│     ├─ iosMain/
-│     │   └─ kotlin/
-│     │       └─ com/example/nexuschat/ios/
-│     │           └─ KeychainProvider.kt   (Apple Keychain bridge)
-│     └─ iosArm64/
-│        └─ kotlin/
-│           └─ com/example/nexuschat/ios/     (same source set, different ABI)
-│  └─ build.gradle.kts (depends on :shared)
-└─ desktopApp/                # Desktop (macOS / Windows / Linux) module
-   └─ src/
-      └─ desktopMain/
-         └─ kotlin/
-            └─ com/example/nexuschat/desktop/
-                └─ OsKeyringProvider.kt   (OS native keyring / encrypted file fallback)
-      └─ build.gradle.kts (depends on :shared)
+├─ app/                        # Android application entry point
+├─ shared/                     # shared KMP module and Compose UI
+│  └─ src/commonMain/kotlin/com/example/nexuschat/
+│     ├─ data/                 # models, demo repository, Ktor client
+│     ├─ domain/               # repository contracts and storage boundary
+│     ├─ presentation/         # shared ViewModel and UI state
+│     └─ ui/                   # Compose screens/components
+├─ docs/                       # architecture notes and demo fixtures
+└─ .github/workflows/          # Android CI
 ```
 
 All shared Kotlin code lives in `shared/src/commonMain`; Android, iOS and Desktop modules only add platform‑specific entry points and Gradle plugins.
 
 ---
 
-## 4. Core Source Files (already implemented)
+## 4. Current Core Source Files
 
 | File | Purpose |
 |------|---------|
@@ -97,12 +63,10 @@ All shared Kotlin code lives in `shared/src/commonMain`; Android, iOS and Deskto
 
 ---
 
-## 5. BYOK Storage (expect/actual)
+## 5. Planned BYOK Storage (not wired yet)
 
 - **Shared:** `ApiKeyProvider` interface (`keyFor(provider)`) and `ChatStorage` interface.
-- **Android:** `AesKeyStoreProvider` → `EncryptedSharedPreferences` + Android Keystore.
-- **iOS:** `KeychainProvider` → Apple Keychain via tiny Swift bridge.
-- **Desktop:** `OsKeyringProvider` → macOS Keychain / Windows Credential Manager / encrypted file fallback.
+Android Keystore, Apple Keychain, and desktop credential storage are planned platform implementations. The current Android entry point still uses `DemoChatRepository` and does not expose API-key settings.
 
 ---
 
@@ -112,18 +76,18 @@ All shared Kotlin code lives in `shared/src/commonMain`; Android, iOS and Deskto
    ```bash
    ./gradlew :shared:compileKotlinJvm   # or the specific target
    ```
-2. **Add the platform‑specific actual implementations** (see the files above).  
-3. **Run the app** on your desired target (Android Studio, Xcode via the iOS KMP template, or `./gradlew run` for desktop).  
+2. **Run the Android demo** from Android Studio or with `./gradlew :app:installDebug` on a connected device.
+3. **Production setup:** add platform-specific secure storage, persistence, and real transport before enabling BYOK mode.
 
 ---
 
 ## 7. Next Steps (recommended)
 
-- Secure‑key storage integration per platform (already scaffolded).  
-- SQLDelight schema & DAO generation for chat‑session persistence.  
+- Secure-key storage integration per platform.
+- SQLDelight schema and DAO generation for chat-session persistence.
 - Unit‑test the delta parsers (`parseOpenAiDelta`, `parseAnthropicDelta`, `parseGeminiDelta`).  
 - Add CI pipelines (GitHub Actions) that build Android, iOS, and Desktop targets.  
-- Compose-based `ChatScreen` is implemented in the shared module and wired to the Android entry point.
+- Compose-based `ChatScreen` is implemented in the shared module and wired to the Android demo entry point.
 
 ---
 

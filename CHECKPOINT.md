@@ -2,6 +2,16 @@
 
 Updated: October 6, 2026
 
+## Audit maintenance completed
+
+- CI now uses JDK 17 with current checkout/setup actions.
+- Gradle dependencies are centralized in `gradle/libs.versions.toml`.
+- Android backup/data extraction is explicitly disabled for the privacy-first app.
+- Android construction is isolated in `app/.../AppContainer.kt`.
+- README module and production-readiness claims now match the actual code.
+- Personal-looking sample profile/chat data was replaced with neutral demo data.
+- Stale unused image/color resources were removed and launcher monochrome layers were added.
+
 ## Current state
 
 The Android app now uses a WhatsApp-inspired NexusChat shell based on the reference screens in `/home/shafi/Downloads/WhatsApp`.
