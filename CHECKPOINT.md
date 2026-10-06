@@ -33,6 +33,18 @@ Implemented screens and navigation:
 - `shared/src/commonMain/kotlin/com/example/nexuschat/ui/NexusApp.kt`
 - `shared/src/commonMain/kotlin/com/example/nexuschat/ui/ChatScreen.kt`
 - `app/src/main/kotlin/shafi/example/nexuschat/MainActivity.kt`
+- `shared/src/commonMain/kotlin/com/example/nexuschat/data/demo/DemoChatRepository.kt`
+- `docs/demo/demo_chat.json`
+- `docs/ARCHITECTURE.md`
+
+## Demo architecture
+
+- Android currently starts with `DemoChatRepository` so the app works without API keys.
+- Demo responses stream token-by-token and support send, cancel, retry, model switching, and seeded messages.
+- Repository boundaries are defined for later SQLDelight persistence, sync/outbox processing, and real LLM transport.
+- Architecture research and production migration direction are documented in `docs/ARCHITECTURE.md`.
+
+Latest commit: `18c273a feat(demo): add functional repository architecture`
 
 ## Verification
 
