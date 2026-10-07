@@ -2,12 +2,11 @@ package com.example.nexuschat.domain.messenger
 
 import kotlinx.coroutines.flow.Flow
 
-/** Transport is intentionally protocol-agnostic; a WebSocket adapter is future infrastructure. */
 interface RealtimeTransport {
-    val events: Flow<RealtimeEvent>
-    suspend fun connect(session: DeviceSession)
+    val incoming: Flow<String>
+    suspend fun connect(devUserId: String)
+    suspend fun send(text: String)
     suspend fun disconnect()
-    suspend fun send(operation: OutboxOperation)
 }
 
 sealed interface RealtimeEvent {
