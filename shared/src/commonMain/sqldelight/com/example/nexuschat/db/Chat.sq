@@ -3,39 +3,85 @@ CREATE TABLE chat_session (
     title TEXT NOT NULL,
     model_id TEXT NOT NULL,
     system_prompt TEXT,
+    mode TEXT NOT NULL DEFAULT 'DEMO',
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL
 );
 
 CREATE TABLE chat_message (
     id TEXT NOT NULL PRIMARY KEY,
-    session_id TEXT NOT NULL,
+    session_id TEXT NOT NULL REFERENCES chat_session(id) ON DELETE CASCADE,
     role TEXT NOT NULL,
     content TEXT NOT NULL,
     timestamp_epoch_millis INTEGER NOT NULL,
-    model_id TEXT
+    model_id TEXT,
+    turn_id TEXT,
+    attempt_id TEXT,
+    sequence INTEGER NOT NULL DEFAULT 0,
+    state TEXT NOT NULL DEFAULT 'COMPLETED',
+    provider TEXT,
+    error_category TEXT
 );
 
+CREATE INDEX chat_message_session_sequence ON chat_message(session_id, sequence, id);
+
 selectSessions:
-SELECT id, title, model_id, system_prompt, created_at, updated_at
-FROM chat_session
-ORDER BY updated_at DESC;
+SELECT * FROM chat_session
+ORDER BY updated_at DESC, id ASC;
 
 selectMessages:
-SELECT id, session_id, role, content, timestamp_epoch_millis, model_id
-FROM chat_message
+SELECT * FROM chat_message
 WHERE session_id = ?
-ORDER BY timestamp_epoch_millis ASC;
+ORDER BY sequence ASC, id ASC;
+
+selectMessageById:
+SELECT * FROM chat_message
+WHERE id = ?;
+
+maxSequence:
+SELECT COALESCE(MAX(sequence), 0) FROM chat_message
+WHERE session_id = ?;
 
 upsertSession:
-INSERT OR REPLACE INTO chat_session(id, title, model_id, system_prompt, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?);
+INSERT OR IGNORE INTO chat_session(id, title, model_id, system_prompt, mode, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?);
+
+updateSession:
+UPDATE chat_session
+SET title = ?, model_id = ?, system_prompt = ?, mode = ?, updated_at = ?
+WHERE id = ?;
+
+touchSession:
+UPDATE chat_session
+SET model_id = ?, system_prompt = ?, updated_at = ?
+WHERE id = ?;
+
+renameSession:
+UPDATE chat_session
+SET title = ?
+WHERE id = ?;
+
+selectSessionById:
+SELECT * FROM chat_session
+WHERE id = ?;
 
 insertMessage:
-INSERT OR REPLACE INTO chat_message(
-    id, session_id, role, content, timestamp_epoch_millis, model_id
+INSERT OR IGNORE INTO chat_message(
+    id, session_id, role, content, timestamp_epoch_millis,
+    model_id, turn_id, attempt_id, sequence, state, provider, error_category
 )
-VALUES (?, ?, ?, ?, ?, ?);
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+updateMessage:
+UPDATE chat_message
+SET content = ?, role = ?, timestamp_epoch_millis = ?, model_id = ?,
+    turn_id = ?, attempt_id = ?, sequence = ?, state = ?, provider = ?, error_category = ?
+WHERE id = ?;
+
+markInterrupted:
+UPDATE chat_message
+SET state = 'INTERRUPTED'
+WHERE session_id = ? AND state IN ('PENDING', 'STREAMING');
 
 deleteSession:
 DELETE FROM chat_session WHERE id = ?;

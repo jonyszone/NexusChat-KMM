@@ -1,0 +1,36 @@
+-- NexusChat schema v1 -> v2.
+-- Adds explicit mode provenance on sessions and a durable turn lifecycle on
+-- messages (turn/attempt identity, stable ordering, state, provider, error).
+-- Existing rows are preserved; already-ordered rows keep timestamp ordering.
+
+ALTER TABLE chat_session ADD COLUMN mode TEXT NOT NULL DEFAULT 'DEMO';
+
+CREATE TABLE chat_message_new (
+    id TEXT NOT NULL PRIMARY KEY,
+    session_id TEXT NOT NULL REFERENCES chat_session(id) ON DELETE CASCADE,
+    role TEXT NOT NULL,
+    content TEXT NOT NULL,
+    timestamp_epoch_millis INTEGER NOT NULL,
+    model_id TEXT,
+    turn_id TEXT,
+    attempt_id TEXT,
+    sequence INTEGER NOT NULL DEFAULT 0,
+    state TEXT NOT NULL DEFAULT 'COMPLETED',
+    provider TEXT,
+    error_category TEXT
+);
+
+INSERT INTO chat_message_new (
+    id, session_id, role, content, timestamp_epoch_millis,
+    model_id, turn_id, attempt_id, sequence, state, provider, error_category
+)
+SELECT
+    id, session_id, role, content, timestamp_epoch_millis,
+    model_id, NULL, NULL, timestamp_epoch_millis, 'COMPLETED', NULL, NULL
+FROM chat_message;
+
+DROP TABLE chat_message;
+
+ALTER TABLE chat_message_new RENAME TO chat_message;
+
+CREATE INDEX chat_message_session_sequence ON chat_message(session_id, sequence, id);

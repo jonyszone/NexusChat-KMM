@@ -20,6 +20,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -43,9 +44,30 @@ interface ApiKeyStore : ApiKeyProvider {
 class MissingApiKeyException(val provider: LlmProvider) :
     IllegalStateException("No API key stored for $provider. Add it in Settings (BYOK).")
 
-/** Thrown for non-2xx HTTP from the LLM backend. */
+/**
+ * Thrown when a stored credential exists but cannot be decrypted — corrupt
+ * ciphertext or a Keystore key that was invalidated (for example after a
+ * device restore). Kept distinct from [MissingApiKeyException] so the user is
+ * told to re-enter the key rather than silently dropped into demo mode.
+ */
+class CredentialCorruptedException(val provider: LlmProvider, cause: Throwable? = null) :
+    IllegalStateException("Stored credential for $provider could not be decrypted.", cause)
+
+/**
+ * Non-2xx HTTP from the LLM backend. The [message] deliberately contains only
+ * the status code; the (bounded, sanitized) body preview is exposed separately
+ * so a provider body can never leak into a snackbar or crash report by accident.
+ */
 class LlmHttpException(val status: Int, val bodyPreview: String) :
-    IllegalStateException("LLM HTTP $status: $bodyPreview")
+    IllegalStateException("LLM HTTP $status")
+
+/**
+ * A 2xx stream that still failed: a provider error event, an unexpected EOF
+ * before the completion marker, a blocked/refused response, or malformed SSE.
+ * [category] is one of `stream_error`, `unexpected_eof`, `refusal`, `malformed`.
+ */
+class LlmStreamException(val category: String, message: String) :
+    IllegalStateException(message)
 
 // ---------------------------------------------------------------------------
 // Wire DTOs (only fields we need — Json { ignoreUnknownKeys = true })
@@ -58,7 +80,9 @@ private data class OpenAiMessage(val role: String, val content: String)
 private data class OpenAiRequest(
     val model: String,
     val messages: List<OpenAiMessage>,
-    val stream: Boolean = true,
+    // No default: `stream` must always appear on the wire regardless of the
+    // Json encoder configuration (OpenAI defaults to non-streaming).
+    val stream: Boolean,
     @SerialName("max_tokens") val maxTokens: Int? = null
 )
 
@@ -66,13 +90,19 @@ private data class OpenAiRequest(
 private data class OpenAiDelta(val content: String? = null)
 
 @Serializable
-private data class OpenAiChoice(val delta: OpenAiDelta? = null)
+private data class OpenAiChoice(
+    val delta: OpenAiDelta? = null,
+    @SerialName("finish_reason") val finishReason: String? = null
+)
 
 @Serializable
-private data class OpenAiChunk(val choices: List<OpenAiChoice> = emptyList())
+private data class OpenAiError(val message: String? = null, val type: String? = null)
 
 @Serializable
-private data class AnthropicContent(val type: String = "text", val text: String)
+private data class OpenAiChunk(
+    val choices: List<OpenAiChoice> = emptyList(),
+    val error: OpenAiError? = null
+)
 
 @Serializable
 private data class AnthropicMessage(val role: String, val content: String)
@@ -82,7 +112,9 @@ private data class AnthropicRequest(
     val model: String,
     @SerialName("max_tokens") val maxTokens: Int = 1024,
     val messages: List<AnthropicMessage>,
-    val stream: Boolean = true
+    val system: String? = null,
+    // No default: must always serialize so the response is streamed.
+    val stream: Boolean
 )
 
 @Serializable
@@ -92,19 +124,37 @@ private data class AnthropicDelta(val text: String? = null)
 private data class AnthropicChunk(val delta: AnthropicDelta? = null)
 
 @Serializable
+private data class AnthropicMessageDelta(val stop_reason: String? = null)
+
+@Serializable
+private data class AnthropicMessageDeltaEvent(val delta: AnthropicMessageDelta? = null)
+
+@Serializable
 private data class GeminiPart(val text: String? = null)
 
 @Serializable
-private data class GeminiContent(val parts: List<GeminiPart>)
+private data class GeminiContent(val role: String? = null, val parts: List<GeminiPart>)
 
 @Serializable
-private data class GeminiRequest(val contents: List<GeminiContent>)
+private data class GeminiRequest(
+    val contents: List<GeminiContent>,
+    @SerialName("systemInstruction") val systemInstruction: GeminiContent? = null
+)
 
 @Serializable
-private data class GeminiCandidate(val content: GeminiContent? = null)
+private data class GeminiCandidate(
+    val content: GeminiContent? = null,
+    @SerialName("finishReason") val finishReason: String? = null
+)
 
 @Serializable
-private data class GeminiChunk(val candidates: List<GeminiCandidate> = emptyList())
+private data class GeminiError(val message: String? = null, val status: String? = null)
+
+@Serializable
+private data class GeminiChunk(
+    val candidates: List<GeminiCandidate> = emptyList(),
+    val error: GeminiError? = null
+)
 
 /**
  * Unified streaming engine.
@@ -112,9 +162,9 @@ private data class GeminiChunk(val candidates: List<GeminiCandidate> = emptyList
  * Why manual SSE parsing instead of Ktor's `SSE` plugin?
  * - Ktor's SSE plugin only supports GET. All chat-completion endpoints
  *   require POST with a JSON body.
- * - So we POST with ContentNegotiation(JSON), then read the
- *   `text/event-stream` ByteReadChannel line-by-line and emit
- *   provider-normalised text deltas as Flow<String>.
+ * - So we POST, then read the `text/event-stream` channel and run it through
+ *   [SseFramer], which handles event boundaries, multiline data, comments,
+ *   CRLF and fragmented UTF-8 correctly, then emit provider-normalised deltas.
  *
  * Usage: inject HttpClient with platform engine + Json, inject keys.
  */
@@ -137,23 +187,25 @@ class KtorLlmStreamingClient(
         val visible = history.filter { it.role != ChatRole.SYSTEM }
 
         when (model.provider) {
-            LlmProvider.OPENAI -> emitAll(streamOpenAiCompatible(
-                baseUrl = "https://api.openai.com/v1/chat/completions",
-                modelId = model.id,
-                messages = mergeSystem(visible, systemPrompt),
-                authHeader = HttpHeaders.Authorization to "Bearer $apiKey",
-                extraHeaders = emptyMap()
-            ) { raw -> parseOpenAiDelta(raw, json) })
+            LlmProvider.OPENAI -> emitAll(
+                streamOpenAiCompatible(
+                    baseUrl = "https://api.openai.com/v1/chat/completions",
+                    modelId = model.id,
+                    messages = mergeSystem(visible, systemPrompt),
+                    authHeader = HttpHeaders.Authorization to "Bearer $apiKey"
+                )
+            )
 
-            LlmProvider.DEEPSEEK -> emitAll(streamOpenAiCompatible(
-                baseUrl = "https://api.deepseek.com/chat/completions",
-                modelId = model.id,
-                messages = mergeSystem(visible, systemPrompt),
-                authHeader = HttpHeaders.Authorization to "Bearer $apiKey",
-                extraHeaders = emptyMap()
-            ) { raw -> parseOpenAiDelta(raw, json) })
+            LlmProvider.DEEPSEEK -> emitAll(
+                streamOpenAiCompatible(
+                    baseUrl = "https://api.deepseek.com/chat/completions",
+                    modelId = model.id,
+                    messages = mergeSystem(visible, systemPrompt),
+                    authHeader = HttpHeaders.Authorization to "Bearer $apiKey"
+                )
+            )
 
-            LlmProvider.ANTHROPIC -> emitAll(streamAnthropic(model, visible, apiKey))
+            LlmProvider.ANTHROPIC -> emitAll(streamAnthropic(model, visible, systemPrompt, apiKey))
 
             LlmProvider.GEMINI -> emitAll(streamGemini(model, visible, systemPrompt, apiKey))
         }
@@ -165,50 +217,66 @@ class KtorLlmStreamingClient(
         baseUrl: String,
         modelId: String,
         messages: List<ChatMessage>,
-        authHeader: Pair<String, String>,
-        extraHeaders: Map<String, String>,
-        extract: (String) -> String?
+        authHeader: Pair<String, String>
     ): Flow<String> = flow {
         val body = OpenAiRequest(
             model = modelId,
-            messages = messages.map {
-                OpenAiMessage(role = it.role.wireName(), content = it.content)
-            }
+            messages = messages.map { OpenAiMessage(role = it.role.wireName(), content = it.content) },
+            stream = true
         )
         http.preparePost(baseUrl) {
             contentType(ContentType.Application.Json)
             accept(ContentType.Text.EventStream)
             header(authHeader.first, authHeader.second)
-            extraHeaders.forEach { (k, v) -> header(k, v) }
             setBody(body)
         }.execute { response ->
             checkSuccess(response)
-            response.eventDataLines().collect { data ->
-                if (data == "[DONE]") return@collect
-                val token = runCatching { extract(data) }.getOrNull()
-                if (!token.isNullOrEmpty()) emit(token)
+            val framer = SseFramer()
+            var terminated = false
+            collectEvents(response, framer) { event ->
+                val data = event.data
+                if (data.isBlank()) return@collectEvents true
+                if (data == OPENAI_DONE) {
+                    terminated = true
+                    return@collectEvents false
+                }
+                val chunk = decodeOrNull(OpenAiChunk.serializer(), data)
+                if (chunk?.error != null) {
+                    throw LlmStreamException("stream_error", "The provider reported a streaming error.")
+                }
+                chunk?.choices?.firstOrNull()?.let { choice ->
+                    if (choice.finishReason == "content_filter") {
+                        throw LlmStreamException("refusal", "The provider blocked this response.")
+                    }
+                    choice.delta?.content?.takeIf { it.isNotEmpty() }?.let { emit(it) }
+                }
+                true
+            }
+            if (!terminated) {
+                throw LlmStreamException("unexpected_eof", "The provider stream ended before completion.")
             }
         }
     }
 
+    // -- Anthropic -----------------------------------------------------------
+
     private fun streamAnthropic(
         model: AiModel,
         messages: List<ChatMessage>,
+        systemPrompt: String?,
         apiKey: String
     ): Flow<String> = flow {
         val body = AnthropicRequest(
             model = model.id,
-            messages = messages
-                .filter { it.role != ChatRole.SYSTEM }
-                .map {
-                    AnthropicMessage(
-                        role = when (it.role) {
-                            ChatRole.USER -> "user"
-                            else -> "assistant"
-                        },
-                        content = it.content
-                    )
-                }
+            messages = messages.map {
+                AnthropicMessage(
+                    role = if (it.role == ChatRole.USER) "user" else "assistant",
+                    content = it.content
+                )
+            },
+            // Anthropic takes the system prompt as a top-level field, not a message.
+            system = systemPrompt?.takeIf { it.isNotBlank() },
+            stream = true
         )
         http.preparePost("https://api.anthropic.com/v1/messages") {
             contentType(ContentType.Application.Json)
@@ -218,25 +286,37 @@ class KtorLlmStreamingClient(
             setBody(body)
         }.execute { response ->
             checkSuccess(response)
-            // Anthropic sends `event: <type>` + `data: <json>` pairs.
-            // We only care about content_block_delta with delta.text.
-            var pendingEvent: String? = null
-            response.sseRawLines().collect { line ->
-                when {
-                    line.startsWith("event:") -> pendingEvent = line.removePrefix("event:").trim()
-                    line.startsWith("data:") -> {
-                        val data = line.removePrefix("data:").trim()
-                        val token = runCatching {
-                            parseAnthropicDelta(pendingEvent, data, json)
-                        }.getOrNull()
-                        if (!token.isNullOrEmpty()) emit(token)
-                        pendingEvent = null
+            val framer = SseFramer()
+            var terminated = false
+            collectEvents(response, framer) { event ->
+                when (event.event) {
+                    "content_block_delta" -> {
+                        val token = decodeOrNull(AnthropicChunk.serializer(), event.data)
+                            ?.delta?.text?.takeIf { it.isNotEmpty() }
+                        if (token != null) emit(token)
                     }
-                    line.isBlank() -> pendingEvent = null
+                    "message_delta" -> {
+                        val stop = decodeOrNull(AnthropicMessageDeltaEvent.serializer(), event.data)
+                            ?.delta?.stop_reason
+                        if (stop == "refusal") {
+                            throw LlmStreamException("refusal", "The provider blocked this response.")
+                        }
+                    }
+                    "message_stop" -> {
+                        terminated = true
+                        return@collectEvents false
+                    }
+                    "error" -> throw LlmStreamException("stream_error", "The provider reported a streaming error.")
                 }
+                true
+            }
+            if (!terminated) {
+                throw LlmStreamException("unexpected_eof", "The provider stream ended before completion.")
             }
         }
     }
+
+    // -- Gemini --------------------------------------------------------------
 
     private fun streamGemini(
         model: AiModel,
@@ -244,58 +324,97 @@ class KtorLlmStreamingClient(
         systemPrompt: String?,
         apiKey: String
     ): Flow<String> = flow {
-        val contents = buildList {
-            if (systemPrompt != null) {
-                add(GeminiContent(listOf(GeminiPart(systemPrompt))))
-            }
-            messages.forEach { add(GeminiContent(listOf(GeminiPart(it.content)))) }
+        val contents = messages.map { message ->
+            // Gemini uses user/model roles rather than user/assistant.
+            GeminiContent(
+                role = if (message.role == ChatRole.ASSISTANT) "model" else "user",
+                parts = listOf(GeminiPart(message.content))
+            )
         }
-        val url = "https://generativelanguage.googleapis.com/v1beta/models/${model.id}:streamGenerateContent?alt=sse&key=$apiKey"
-        http.preparePost(url) {
+        val body = GeminiRequest(
+            contents = contents,
+            systemInstruction = systemPrompt
+                ?.takeIf { it.isNotBlank() }
+                ?.let { GeminiContent(parts = listOf(GeminiPart(it))) }
+        )
+        // Credential travels in a header, never the query string, so it cannot
+        // end up in URLs, proxy logs or browser history.
+        http.preparePost(
+            "https://generativelanguage.googleapis.com/v1beta/models/${model.id}:streamGenerateContent?alt=sse"
+        ) {
             contentType(ContentType.Application.Json)
             accept(ContentType.Text.EventStream)
-            setBody(GeminiRequest(contents))
+            header("x-goog-api-key", apiKey)
+            setBody(body)
         }.execute { response ->
             checkSuccess(response)
-            response.eventDataLines().collect { data ->
-                val token = runCatching { parseGeminiDelta(data, json) }.getOrNull()
-                if (!token.isNullOrEmpty()) emit(token)
+            val framer = SseFramer()
+            var terminated = false
+            collectEvents(response, framer) { event ->
+                if (event.data.isBlank()) return@collectEvents true
+                val chunk = decodeOrNull(GeminiChunk.serializer(), event.data)
+                if (chunk?.error != null) {
+                    throw LlmStreamException("stream_error", "The provider reported a streaming error.")
+                }
+                val candidate = chunk?.candidates?.firstOrNull()
+                val finish = candidate?.finishReason
+                if (finish in GEMINI_BLOCK_REASONS) {
+                    throw LlmStreamException("refusal", "The provider blocked this response.")
+                }
+                // Gemini can send the final text and the finishReason together,
+                // so emit the parts before terminating on the finish reason.
+                candidate?.content?.parts?.forEach { part ->
+                    part.text?.takeIf { it.isNotEmpty() }?.let { emit(it) }
+                }
+                if (finish != null) {
+                    terminated = true
+                    return@collectEvents false
+                }
+                true
+            }
+            if (!terminated) {
+                throw LlmStreamException("unexpected_eof", "The provider stream ended before completion.")
             }
         }
     }
 
     // -- SSE helpers ---------------------------------------------------------
 
+    private suspend fun collectEvents(
+        response: HttpResponse,
+        framer: SseFramer,
+        onEvent: suspend (SseEvent) -> Boolean
+    ) {
+        val channel = response.bodyAsChannel()
+        while (!channel.isClosedForRead) {
+            val line = channel.readUTF8Line() ?: break
+            val event = framer.feed(line) ?: continue
+            if (!onEvent(event)) return
+        }
+        framer.finish()?.let { onEvent(it) }
+    }
+
     private suspend fun checkSuccess(response: HttpResponse) {
         if (!response.status.isSuccess()) {
-            // Read a small preview without consuming the stream twice.
-            val preview = runCatching {
-                response.bodyAsChannel().readUTF8Line() ?: ""
-            }.getOrDefault("")
-            throw LlmHttpException(response.status.value, preview.take(500))
+            throw LlmHttpException(response.status.value, readBoundedPreview(response))
         }
     }
 
-    /** Emits only the payload of `data: ...` lines. */
-    private fun HttpResponse.eventDataLines(): Flow<String> = flow {
-        bodyAsChannel().let { ch ->
-            while (!ch.isClosedForRead) {
-                val line = ch.readUTF8Line() ?: break
-                if (line.startsWith("data:")) {
-                    val data = line.removePrefix("data:").trim()
-                    if (data.isNotEmpty()) emit(data)
-                }
-            }
+    /** Reads at most [ERROR_PREVIEW_LIMIT] characters, then strips control characters. */
+    private suspend fun readBoundedPreview(response: HttpResponse): String {
+        val channel = response.bodyAsChannel()
+        val builder = StringBuilder()
+        while (builder.length < ERROR_PREVIEW_LIMIT) {
+            val line = runCatching { channel.readUTF8Line() }.getOrNull() ?: break
+            builder.append(line)
         }
+        return builder.toString()
+            .filter { it.code in 32..126 || it == '\n' }
+            .take(ERROR_PREVIEW_LIMIT)
     }
 
-    /** Emits raw `event:` / `data:` / blank lines for stateful parsers. */
-    private fun HttpResponse.sseRawLines(): Flow<String> = flow {
-        val ch = bodyAsChannel()
-        while (!ch.isClosedForRead) {
-            emit(ch.readUTF8Line() ?: break)
-        }
-    }
+    private fun <T> decodeOrNull(serializer: KSerializer<T>, data: String): T? =
+        runCatching { json.decodeFromString(serializer, data) }.getOrNull()
 
     private suspend fun kotlinx.coroutines.flow.FlowCollector<String>.emitAll(
         upstream: Flow<String>
@@ -314,6 +433,77 @@ class KtorLlmStreamingClient(
         ChatRole.SYSTEM -> "system"
         ChatRole.USER -> "user"
         ChatRole.ASSISTANT -> "assistant"
+    }
+
+    private companion object {
+        const val OPENAI_DONE = "[DONE]"
+        const val ERROR_PREVIEW_LIMIT = 512
+        val GEMINI_BLOCK_REASONS = setOf("SAFETY", "PROHIBITED_CONTENT", "BLOCKLIST", "RECITATION")
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Pure, unit-testable SSE framing (no Ktor / no coroutines)
+// ---------------------------------------------------------------------------
+
+/** One dispatched Server-Sent Event. */
+data class SseEvent(val event: String?, val data: String)
+
+/**
+ * Line-oriented SSE framer implementing the event-stream rules we rely on:
+ * events are separated by a blank line, `data:` accumulates (joined with `\n`),
+ * `event:` names the type, `:` starts a comment, and a trailing CR is ignored.
+ * A final event without a trailing blank line is flushed by [finish].
+ */
+class SseFramer {
+    private val data = StringBuilder()
+    private var event: String? = null
+    private var hasData = false
+
+    /** Feed one line; returns a complete event when a blank separator is seen. */
+    fun feed(rawLine: String): SseEvent? {
+        val line = rawLine.removeSuffix("\r")
+        if (line.isEmpty()) {
+            val dispatched = dispatch()
+            event = null
+            return dispatched
+        }
+        if (line.startsWith(":")) return null // comment
+        val colon = line.indexOf(':')
+        val field: String
+        val value: String
+        if (colon < 0) {
+            field = line
+            value = ""
+        } else {
+            field = line.substring(0, colon)
+            value = line.substring(colon + 1).removePrefix(" ")
+        }
+        when (field) {
+            "event" -> event = value
+            "data" -> {
+                if (hasData) data.append('\n')
+                data.append(value)
+                hasData = true
+            }
+            // "id:" / "retry:" / unknown fields are intentionally ignored.
+        }
+        return null
+    }
+
+    /** Flush any pending event at end of stream. */
+    fun finish(): SseEvent? {
+        val dispatched = dispatch()
+        event = null
+        return dispatched
+    }
+
+    private fun dispatch(): SseEvent? {
+        if (!hasData && event == null) return null
+        val payload = data.toString()
+        data.setLength(0)
+        hasData = false
+        return SseEvent(event, payload)
     }
 }
 
