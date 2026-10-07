@@ -11,11 +11,12 @@ Human messaging is independent of the existing optional AI assistant. `MessageKi
 
 Delivery state is monotonic (`pending -> sending -> sent -> delivered -> read`) with an explicit retry path (`failed -> pending`). `sent` means a future backend has durably accepted the operation; `delivered` and `read` require recipient acknowledgements. `clientMessageId` and `idempotencyKey` remain stable across retries. Per-conversation server sequence numbers are authoritative for ordering; local unsequenced messages remain visible after sequenced messages until reconciliation.
 
-## Backend boundary (first isolated implementation)
+## Backend boundary (development-only slice)
 
-The isolated `server/` Ktor JVM module now provides `GET /healthz`, an authenticated-boundary development WebSocket at `/v1/realtime`, typed send/ack/presence/typing/call-signal envelopes, user-scoped idempotency, and an in-memory repository. `DevelopmentSessionAuthenticator` accepts only a constrained `X-Dev-User-Id` header and is explicitly not production authentication. Durable encrypted envelopes, membership authorization, cursor repair, retries, fan-out, rate limits, and reconnect/resume semantics remain infrastructure work.
+The isolated `server/` Ktor JVM module exposes `GET /healthz` and WebSocket `/v1/realtime` with protocol-version-1 typed client/server envelopes. Message acceptance returns a correlated ack; malformed/version mismatch and repository rejections return structured errors. The history request returns acknowledgement metadata after a sequence cursor. `DevelopmentSessionAuthenticator` accepts a constrained `X-Dev-User-Id` request header and the application currently defaults to it; it is a development stub, not production authentication. `MessageRepository` has a synchronized atomic-file implementation exercised across object restart and a volatile in-memory scripted implementation. The file implementation supports a local test/development persistence scenario only; it is not a managed production database, and multi-process concurrency/durability guarantees are not claimed.
 
-The client interfaces intentionally do not prescribe a vendor, service decomposition, database, or wire format beyond the versionable serialized domain shapes. See `server/README.md` for the explicit blocker/TODO list.
+Tests cover envelope version/default and serialization round-trip, membership rejection, retry idempotency, correlated ack/error routing, and cursor history. No client WebSocket adapter or SQLDelight realtime outbox/inbound tables are implemented. Production auth, E2EE, push, media, and calls are not implemented.
+
 
 ## Signaling and calls boundary (later infrastructure)
 

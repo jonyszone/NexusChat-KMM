@@ -16,8 +16,10 @@ Updated: October 7, 2026
 - Kept the existing AI/BYOK repository and provider feature unchanged and optional. Assistant provenance is represented separately from human delivery semantics.
 - Added `docs/MESSENGER_DOMAIN_ADR.md`, documenting backend, signaling/WebRTC/TURN, and E2EE boundaries and explicitly deferring their implementations to later infrastructure/security work.
 - Added JVM coverage for delivery transitions/retry, stable idempotency and duplicate suppression, per-conversation ordering, and polymorphic outbox/call-signal serialization.
-- Added isolated `server/` Ktor JVM application module with `GET /healthz`, development-only authenticated-boundary `WS /v1/realtime`, typed client/server envelopes for send/ack, presence, typing, and call signaling, an in-memory user-scoped idempotency repository, and routing tests. See `server/README.md` for the explicit production TODO/blocker list.
-- Database, Redis, push, media, WebRTC/STUN/TURN, and Signal E2EE remain interfaces/TODOs only; no credentials, external services, or production-security claims were added.
+- Implemented protocol-version-1 client/server WebSocket envelopes, typed message acknowledgements and structured errors, plus a history request/response carrying messages after a sequence cursor. WebSocket sends return correlated ack/error responses; membership failures are rejected without accepting the message.
+- Added `MessageRepository`-backed persistence with a synchronized atomic-file implementation for restart/idempotency tests and an in-memory scripted-user implementation for development. Neither is production database infrastructure; development auth remains the constrained `X-Dev-User-Id` stub.
+- Added tests for envelope round-trip/version compatibility, file-store restart/idempotent retry, membership rejection, ack/error routing, and WebSocket cursor history. No production auth, E2EE, push, or calls implementation is claimed.
+
 
 - Typed `NexusRoute` navigation for Inbox, Chat(sessionId), Settings, and Profile; toolbar and Android system-back now return through the same route transition.
 - Session row IDs and new-session IDs are carried into Chat routes instead of Boolean detail flags.
@@ -31,14 +33,9 @@ Updated: October 7, 2026
 
 Using `JAVA_HOME=/home/shafi/.jdks/jbr-17.0.14`:
 
-```text
-:server:test                PASS (3 backend tests: serialization, idempotency, health/WebSocket ack routing)
-:shared:jvmTest             PASS (58 JVM test cases reported, including 4 new messenger-domain tests)
-:app:testDebugUnitTest     PASS, NO-SOURCE
-:app:lintDebug             PASS (0 errors; existing warnings remain)
-:app:assembleDebug         PASS
- git diff --check           PASS
-```
+- `:server:test` passes four tests, including membership/cursor fixture coverage; `:shared:jvmTest` passes; `:app:testDebugUnitTest` passes as `NO-SOURCE`; `:app:lintDebug` and `:app:assembleDebug` pass. These gates compile/check the implemented code, not the missing messaging features.
+- `git diff --check` is to be run after this update.
+
 
 Debug APK: `app/build/outputs/apk/debug/app-debug.apk`.
 
