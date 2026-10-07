@@ -1,5 +1,7 @@
 package com.example.nexuschat.server
 
+import com.example.nexuschat.server.domain.DevelopmentAccountRepository
+import com.example.nexuschat.server.domain.FileAccountRepository
 import com.example.nexuschat.server.domain.InMemoryMessageRepository
 import com.example.nexuschat.server.domain.SendCommand
 import com.example.nexuschat.server.transport.ClientEnvelope
@@ -23,6 +25,33 @@ import kotlin.test.assertTrue
 
 class ServerTest {
     private val json = Json { classDiscriminator = "type" }
+
+    @Test fun fileAccountRepositorySurvivesRestartAndEnforcesFixtureMembership() {
+        val file = kotlin.io.path.createTempFile("accounts", ".json").toFile().also { it.delete() }
+        try {
+            val first = FileAccountRepository(file, DevelopmentAccountRepository.snapshot())
+            assertEquals("alice", first.account("alice")?.id)
+            val restarted = FileAccountRepository(file)
+            assertEquals(listOf("bob"), restarted.contacts("alice").map { it.id })
+            assertTrue(restarted.isMember("alice", "c"))
+            assertTrue(!restarted.isMember("mallory", "c"))
+        } finally { file.delete() }
+    }
+
+    @Test fun scriptedAccountContactAndDirectConversationEndpointsUseFixtureMembership() = testApplication {
+        application { module() }
+        val wsClient = createClient { install(WebSockets) }
+        val alice = client.get("/dev/v1/account") { header("X-Dev-User-Id", "alice") }
+        assertEquals(200, alice.status.value)
+        val contacts = client.get("/dev/v1/contacts") { header("X-Dev-User-Id", "alice") }
+        assertTrue(contacts.bodyAsText().contains("bob"))
+        val conversation = client.get("/dev/v1/conversations/direct/bob") { header("X-Dev-User-Id", "alice") }
+        assertTrue(conversation.bodyAsText().contains("c"))
+        val socket = wsClient.webSocketSession("/v1/realtime") { header("X-Dev-User-Id", "mallory") }
+        socket.send(json.encodeToString<ClientEnvelope>(ClientEnvelope.SendMessage("c", "cm", "ik", "hello")))
+        val error = json.decodeFromString<ServerEnvelope>((socket.incoming.receive() as Frame.Text).data.decodeToString()) as ServerEnvelope.Error
+        assertEquals("MESSAGE_REJECTED", error.code)
+    }
 
     @Test fun envelopeRoundTrip() {
         val value: ClientEnvelope = ClientEnvelope.CallSignal("c", "call", "offer", buildJsonObject { put("sdp", JsonPrimitive("x")) })
