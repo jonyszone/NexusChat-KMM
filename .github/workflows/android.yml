@@ -6,21 +6,67 @@ on:
   pull_request:
     branches: [ "master" ]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: android-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  build:
-
+  verify:
     runs-on: ubuntu-latest
-
+    timeout-minutes: 30
     steps:
-    - uses: actions/checkout@v4
-    - name: set up JDK 17
-      uses: actions/setup-java@v4
-      with:
-        java-version: '17'
-        distribution: 'temurin'
-        cache: gradle
-
-    - name: Grant execute permission for gradlew
-      run: chmod +x gradlew
-    - name: Build with Gradle
-      run: ./gradlew build
+      - uses: actions/checkout@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: temurin
+          cache: gradle
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+      - name: Install pinned Android SDK
+        run: sdkmanager "platforms;android-37" "build-tools;35.0.0" "platform-tools"
+      - name: Grant execute permission for Gradle wrapper
+        run: chmod +x gradlew
+      - name: Verify required JVM suites exist
+        run: |
+          set -eu
+          for suite in \
+            shared/src/jvmTest/kotlin/com/example/nexuschat/presentation/ChatViewModelTest.kt \
+            shared/src/jvmTest/kotlin/com/example/nexuschat/domain/repository/ChatMigrationTest.kt \
+            shared/src/jvmTest/kotlin/com/example/nexuschat/domain/repository/OfflineFirstChatRepositoryTest.kt \
+            shared/src/jvmTest/kotlin/com/example/nexuschat/data/network/ProviderContractTest.kt; do
+            test -s "$suite" || { echo "Missing required JVM suite: $suite"; exit 1; }
+          done
+      - name: JVM tests
+        run: ./gradlew :shared:jvmTest --console=plain
+      - name: Assert JVM tests executed
+        run: |
+          set -eu
+          files=$(find shared/build/test-results/jvmTest -name 'TEST-*.xml' -type f)
+          test -n "$files"
+          count=$(grep -h '<testcase ' $files | wc -l)
+          test "$count" -gt 0
+      - name: Backend JVM tests
+        run: ./gradlew :server:test --console=plain
+      - name: Android unit tests
+        run: ./gradlew :app:testDebugUnitTest --console=plain
+      - name: Lint
+        run: ./gradlew :app:lintDebug --console=plain
+      - name: Debug build
+        run: ./gradlew :app:assembleDebug --console=plain
+      - name: Upload test, lint, and APK reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-verification-reports
+          if-no-files-found: error
+          path: |
+            shared/build/test-results/**
+            shared/build/reports/**
+            app/build/test-results/**
+            app/build/reports/**
+            app/build/outputs/apk/debug/*.apk

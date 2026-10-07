@@ -1,79 +1,55 @@
 # NexusChat-KMM Checkpoint
 
-Updated: October 6, 2026
+Updated: October 7, 2026
 
-## Audit maintenance completed
+## Current repository state
 
-- CI now uses JDK 17 with current checkout/setup actions.
-- Gradle dependencies are centralized in `gradle/libs.versions.toml`.
-- Android backup/data extraction is explicitly disabled for the privacy-first app.
-- Android construction is isolated in `app/.../AppContainer.kt`.
-- README module and production-readiness claims now match the actual code.
-- Personal-looking sample profile/chat data was replaced with neutral demo data.
-- Stale unused image/color resources were removed and launcher monochrome layers were added.
-- SQLDelight 2.3.2 schema, drivers, storage adapter, persistence tests, and repository-backed chat sessions are now wired.
+- Branch: `master`
+- Origin: `https://github.com/jonyszone/NexusChat-KMM.git`
+- Current work is uncommitted by design; no commit or push was performed.
+- Planning document: `docs/NEXT_PHASE_PLAN.md`
 
-## Current state
+## Implemented in this phase
 
-The Android app now uses a WhatsApp-inspired NexusChat shell based on the reference screens in `/home/shafi/Downloads/WhatsApp`.
+- Added the first local real-messenger vertical slice under `shared/src/commonMain/kotlin/com/example/nexuschat/domain/messenger`: serializable user/device/conversation/member/message entities; explicit pending/sending/sent/delivered/read/failed delivery states; stable client/idempotency keys; optional server sequence metadata; durable send/ack outbox operations; presence and typing models; call state and invite/accept/reject/SDP/ICE/hangup signal models.
+- Added protocol-neutral `MessengerRepository`, `RealtimeTransport`, contacts, media, push, and calls interfaces. They are contracts only; no server, WebSocket, push, media, or WebRTC implementation was added.
+- Kept the existing AI/BYOK repository and provider feature unchanged and optional. Assistant provenance is represented separately from human delivery semantics.
+- Added `docs/MESSENGER_DOMAIN_ADR.md`, documenting backend, signaling/WebRTC/TURN, and E2EE boundaries and explicitly deferring their implementations to later infrastructure/security work.
+- Added JVM coverage for delivery transitions/retry, stable idempotency and duplicate suppression, per-conversation ordering, and polymorphic outbox/call-signal serialization.
+- Added isolated `server/` Ktor JVM application module with `GET /healthz`, development-only authenticated-boundary `WS /v1/realtime`, typed client/server envelopes for send/ack, presence, typing, and call signaling, an in-memory user-scoped idempotency repository, and routing tests. See `server/README.md` for the explicit production TODO/blocker list.
+- Database, Redis, push, media, WebRTC/STUN/TURN, and Signal E2EE remain interfaces/TODOs only; no credentials, external services, or production-security claims were added.
 
-Implemented screens and navigation:
+- Typed `NexusRoute` navigation for Inbox, Chat(sessionId), Settings, and Profile; toolbar and Android system-back now return through the same route transition.
+- Session row IDs and new-session IDs are carried into Chat routes instead of Boolean detail flags.
+- Android `ChatViewModel` is lifecycle-owned and created with `SavedStateHandle` through the saved-state factory.
+- Selected session ID and bounded per-session composer drafts use the SavedStateHandle bridge; API keys, prompts, and provider responses are not stored in saved state.
+- Explicit demo/BYOK mode, local SQLDelight session/message persistence, durable turn states, interrupted-turn recovery, and Android Keystore credential storage remain active.
+- CI now installs JDK 17 plus Android SDK platform/build tools, runs separate JVM/unit/lint/debug-build gates, asserts required JVM suites and nonempty JVM reports, and uploads reports/APK artifacts on success or failure.
+- README claims now describe the implemented Android/JVM scope and accurately exclude sync, E2EE, human messaging, and live-provider validation.
 
-- Chats list
-- Chat detail with streaming AI messages
-- Updates / status / channels
-- Communities
-- Calls
-- Profile
-- Overflow menu and settings/profile navigation
+## Verification completed
 
-## UI work
+Using `JAVA_HOME=/home/shafi/.jdks/jbr-17.0.14`:
 
-- WhatsApp-style green palette and white surfaces
-- Search and archived chat row
-- Conversation list with previews and timestamps
-- Bottom navigation for Chats, Updates, Communities, and Calls
-- Floating action buttons
-- Status and channel follow rows
-- Profile information layout
-- Chat wallpaper, message bubbles, typing/streaming states, Markdown code blocks, copy action, and composer
-- Material icons replacing text glyph controls
-
-## Important files
-
-- `shared/src/commonMain/kotlin/com/example/nexuschat/ui/NexusApp.kt`
-- `shared/src/commonMain/kotlin/com/example/nexuschat/ui/ChatScreen.kt`
-- `app/src/main/kotlin/shafi/example/nexuschat/MainActivity.kt`
-- `shared/src/commonMain/kotlin/com/example/nexuschat/data/demo/DemoChatRepository.kt`
-- `docs/demo/demo_chat.json`
-- `docs/ARCHITECTURE.md`
-
-## Demo architecture
-
-- Android currently starts with `DemoChatRepository` so the app works without API keys.
-- Demo responses stream token-by-token and support send, cancel, retry, model switching, and seeded messages.
-- Repository boundaries are defined for later SQLDelight persistence, sync/outbox processing, and real LLM transport.
-- Architecture research and production migration direction are documented in `docs/ARCHITECTURE.md`.
-
-Latest commit: `18c273a feat(demo): add functional repository architecture`
-
-## Verification
-
-JDK used:
-
-`/home/shafi/.jdks/jbr-17.0.14`
-
-Verified successfully:
-
-```bash
-JAVA_HOME=/home/shafi/.jdks/jbr-17.0.14 bash ./gradlew :app:compileDebugKotlin
-JAVA_HOME=/home/shafi/.jdks/jbr-17.0.14 bash ./gradlew :app:assembleDebug
+```text
+:server:test                PASS (3 backend tests: serialization, idempotency, health/WebSocket ack routing)
+:shared:jvmTest             PASS (58 JVM test cases reported, including 4 new messenger-domain tests)
+:app:testDebugUnitTest     PASS, NO-SOURCE
+:app:lintDebug             PASS (0 errors; existing warnings remain)
+:app:assembleDebug         PASS
+ git diff --check           PASS
 ```
 
-APK:
+Debug APK: `app/build/outputs/apk/debug/app-debug.apk`.
 
-`app/build/outputs/apk/debug/app-debug.apk`
+## Exact blockers and deferred verification
 
-## Known warnings
-
-Compilation succeeds with non-blocking deprecation warnings for `Icons.Filled.ArrowBack`, `Icons.Filled.Chat`, and `LocalClipboardManager`. These do not block the build.
+- The backend is a local vertical slice only: the session boundary is a constrained `X-Dev-User-Id` development stub, storage is in-memory, and no durable server acceptance, cursor repair, contacts service, media object storage, push provider, or cross-device delivery exists yet.
+- Calls are models and gateway contracts only: no signaling service, WebRTC adapter, STUN/TURN credentials/operation, incoming-call push, or SFU exists yet.
+- E2EE is intentionally not implemented: Signal Protocol library selection/integration, identity/device key directory, prekeys, trust UX, group rekeying, encrypted media, threat-model review, and interoperability/security review remain required before any privacy claim.
+- The new JVM tests prove local state transitions, envelope serialization, in-memory idempotency, acknowledgement flow, health, and WebSocket routing only; they do not prove production authorization, delivery, push, calls, or cryptographic behavior.
+- `:app:testDebugUnitTest` is still `NO-SOURCE`; no Android-local test was added because the current request's useful lifecycle/navigation/backup coverage depends on Android framework/device behavior and there is no existing app unit-test harness that can verify it meaningfully. The task compiles the Android source successfully.
+- No instrumentation tests were added or run: `adb`/a test device is unavailable in this environment. Rotation, process relaunch, system-back UI, and backup/data-extraction behavior therefore remain device-gated.
+- Live provider calls and release signing were intentionally not attempted. Provider contract/parser JVM tests do not prove model availability or authorized live behavior.
+- CI does not run an emulator matrix yet; adding one requires a supported API/device policy and longer runner budget.
+- Release signing, R8/release verification, accessibility/performance testing, sync backend, human messaging, and E2EE remain out of scope.

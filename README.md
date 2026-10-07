@@ -1,20 +1,20 @@
 # NexusChat KMP
 
-**NexusChat** is a Kotlin Multiplatform (KMP) and Compose Multiplatform AI chat application. The current Android target is demo-functional; production BYOK storage, persistence, and real transport are being integrated incrementally.
+**NexusChat** is an Android-first Kotlin Multiplatform (KMP) BYOK AI chat beta. Demo mode is explicit; BYOK keys, local SQLDelight history, and provider transport are wired for the configured Android/JVM scope.
 
 ---
 
 ## 1. Core Architecture
 
 - **Tech Stack:** Kotlin Multiplatform, Ktor Client, Kotlin Coroutines & Flows, Compose Multiplatform for UI.
-- **Planned production layers:** encrypted BYOK storage, SQLDelight local persistence, and a real sync/message transport behind repository interfaces.
+- **Implemented layers:** Android Keystore-backed BYOK storage, SQLDelight local persistence, and provider transport behind repository interfaces. Sync, human messaging, and E2EE are not implemented.
 
 ---
 
 ## 2. Core Functional Requirements
 
 ### A. Ktor Unified Streaming Engine
-- Multi‑provider HTTP streaming client using `Ktor Client` and its SSE plugin.
+- Multi‑provider HTTP streaming client using `Ktor Client` and a bounded manual SSE framer.
 - Server‑Sent Events from:
   - OpenAI API (`/v1/chat/completions`)
   - Anthropic Messages API (`/v1/messages`)
@@ -63,10 +63,10 @@ All shared Kotlin code lives in `shared/src/commonMain`; Android, iOS and Deskto
 
 ---
 
-## 5. Planned BYOK Storage (not wired yet)
+## 5. BYOK Storage and privacy boundary
 
-- **Shared:** `ApiKeyProvider` interface (`keyFor(provider)`) and `ChatStorage` interface.
-Android Keystore, Apple Keychain, and desktop credential storage are planned platform implementations. The current Android entry point still uses `DemoChatRepository` and does not expose API-key settings.
+- Android keys are encrypted with Android Keystore and are never placed in SavedStateHandle, the database, or logs. Chat history is local SQLite data and provider requests include the selected conversation context.
+- The current configured targets are Android and JVM tests. iOS/Desktop secure-storage adapters, cloud sync, E2EE, and release signing remain future work.
 
 ---
 
@@ -77,17 +77,16 @@ Android Keystore, Apple Keychain, and desktop credential storage are planned pla
    ./gradlew :shared:compileKotlinJvm   # or the specific target
    ```
 2. **Run the Android demo** from Android Studio or with `./gradlew :app:installDebug` on a connected device.
-3. **Production setup:** add platform-specific secure storage, persistence, and real transport before enabling BYOK mode.
+3. **BYOK setup:** choose BYOK in Settings and enter a provider key. Live provider validation and release signing are intentionally not part of local verification.
 
 ---
 
 ## 7. Next Steps (recommended)
 
-- Secure-key storage integration per platform.
-- SQLDelight schema and DAO generation for chat-session persistence.
-- Unit‑test the delta parsers (`parseOpenAiDelta`, `parseAnthropicDelta`, `parseGeminiDelta`).  
-- Add CI pipelines (GitHub Actions) that build Android, iOS, and Desktop targets.  
-- Compose-based `ChatScreen` is implemented in the shared module and wired to the Android demo entry point.
+- Add device lifecycle/navigation/backup verification when an Android test device is available.
+- Validate provider contracts against authorized live providers; parser tests do not establish model availability.
+- Add CI emulator matrix and protected live-provider workflow without exposing credentials to fork builds.
+- Compose-based `ChatScreen` is implemented in the shared module and wired to the Android lifecycle-owned ViewModel.
 
 ---
 
