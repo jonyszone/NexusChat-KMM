@@ -5,60 +5,88 @@ import android.content.SharedPreferences
 import android.util.Base64
 import com.example.nexuschat.data.model.LlmProvider
 import com.example.nexuschat.data.network.ApiKeyStore
-import java.nio.ByteBuffer
+import com.example.nexuschat.data.network.CredentialCorruptedException
+import com.example.nexuschat.data.network.CredentialPayload
+import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyProperties
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import java.security.KeyStore
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
-import android.security.keystore.KeyGenParameterSpec
-import android.security.keystore.KeyProperties
 
-/** Android Keystore-backed BYOK storage. Plaintext keys never enter SharedPreferences. */
+/**
+ * Android Keystore-backed BYOK storage. Plaintext keys never enter
+ * SharedPreferences or the UI. Crypto work runs off the main thread and is
+ * serialized so concurrent set/read/replace cannot interleave mid-operation.
+ *
+ * A stored-but-undecryptable value raises [CredentialCorruptedException] rather
+ * than being reported as a missing key, and a failed durable write is surfaced
+ * instead of being shown as "Saved".
+ */
 class AndroidApiKeyStore(context: Context) : ApiKeyStore {
     private val preferences: SharedPreferences =
         context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
+    private val mutex = Mutex()
 
-    override suspend fun keyFor(provider: LlmProvider): String? =
-        preferences.getString(provider.name, null)?.let(::decrypt)
+    override suspend fun keyFor(provider: LlmProvider): String? = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            val stored = preferences.getString(provider.name, null) ?: return@withLock null
+            val payload = runCatching { Base64.decode(stored, Base64.NO_WRAP) }.getOrNull()
+                ?: throw CredentialCorruptedException(provider)
+            val decoded = CredentialPayload.decode(payload)
+                ?: throw CredentialCorruptedException(provider)
+            try {
+                decrypt(provider, decoded)
+            } catch (e: Exception) {
+                throw CredentialCorruptedException(provider, e)
+            }
+        }
+    }
 
     override suspend fun setKey(provider: LlmProvider, value: String) {
         val trimmed = value.trim()
         if (trimmed.isEmpty()) {
             clearKey(provider)
-        } else {
-            preferences.edit().putString(provider.name, encrypt(trimmed)).apply()
+            return
+        }
+        withContext(Dispatchers.IO) {
+            mutex.withLock {
+                val encoded = Base64.encodeToString(encrypt(trimmed), Base64.NO_WRAP)
+                val committed = preferences.edit().putString(provider.name, encoded).commit()
+                check(committed) { "Failed to persist ${provider.name} key" }
+            }
         }
     }
 
     override suspend fun clearKey(provider: LlmProvider) {
-        preferences.edit().remove(provider.name).apply()
+        withContext(Dispatchers.IO) {
+            mutex.withLock {
+                preferences.edit().remove(provider.name).commit()
+            }
+        }
     }
 
-    private fun encrypt(value: String): String {
+    private fun encrypt(value: String): ByteArray {
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.ENCRYPT_MODE, secretKey())
-        val iv = cipher.iv
         val encrypted = cipher.doFinal(value.toByteArray(Charsets.UTF_8))
-        return Base64.encodeToString(
-            ByteBuffer.allocate(4 + iv.size + encrypted.size)
-                .putInt(iv.size)
-                .put(iv)
-                .put(encrypted)
-                .array(),
-            Base64.NO_WRAP
-        )
+        return CredentialPayload.encode(cipher.iv, encrypted)
     }
 
-    private fun decrypt(encoded: String): String? = runCatching {
-        val payload = Base64.decode(encoded, Base64.NO_WRAP)
-        val buffer = ByteBuffer.wrap(payload)
-        val iv = ByteArray(buffer.int).also(buffer::get)
-        val encrypted = ByteArray(buffer.remaining()).also(buffer::get)
+    private fun decrypt(provider: LlmProvider, decoded: CredentialPayload.Decoded): String {
         val cipher = Cipher.getInstance(TRANSFORMATION)
-        cipher.init(Cipher.DECRYPT_MODE, secretKey(), GCMParameterSpec(TAG_LENGTH_BITS, iv))
-        cipher.doFinal(encrypted).toString(Charsets.UTF_8)
-    }.getOrNull()
+        cipher.init(
+            Cipher.DECRYPT_MODE,
+            secretKey(),
+            GCMParameterSpec(TAG_LENGTH_BITS, decoded.iv)
+        )
+        return cipher.doFinal(decoded.ciphertext).toString(Charsets.UTF_8)
+    }
 
     private fun secretKey(): SecretKey {
         val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }

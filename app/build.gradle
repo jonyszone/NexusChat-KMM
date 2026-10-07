@@ -38,6 +38,8 @@ dependencies {
     implementation libs.androidx.activity.compose
     implementation libs.androidx.core.ktx
     implementation libs.androidx.lifecycle.runtime.ktx
+    implementation libs.androidx.lifecycle.viewmodel
+    implementation libs.androidx.lifecycle.viewmodel.savedstate
     implementation libs.ktor.client.content.negotiation
     implementation libs.ktor.serialization.kotlinx.json
     implementation libs.sqldelight.android.driver

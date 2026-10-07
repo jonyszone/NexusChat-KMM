@@ -65,6 +65,7 @@ import androidx.compose.ui.unit.dp
 import com.example.nexuschat.data.model.AiModel
 import com.example.nexuschat.data.model.AvailableModels
 import com.example.nexuschat.data.model.ChatMessage
+import com.example.nexuschat.data.model.ChatMode
 import com.example.nexuschat.data.model.ChatRole
 import com.example.nexuschat.presentation.ChatEvent
 import com.example.nexuschat.presentation.ChatUiState
@@ -87,6 +88,7 @@ private val WhatsAppDivider = Color(0xFFE9EDEF)
 @Composable
 fun ChatScreen(
     viewModel: ChatViewModel,
+    onBack: () -> Unit = {},
     onOpenSettings: () -> Unit = {}
 ) {
     val state by viewModel.ui.collectAsState()
@@ -95,7 +97,10 @@ fun ChatScreen(
         onSend = viewModel::send,
         onCancel = viewModel::cancel,
         onSwitchModel = viewModel::switchModel,
+        draft = viewModel.draft(state.selectedSessionId),
+        onDraft = { viewModel.setDraft(state.selectedSessionId, it) },
         onConsumeEvent = viewModel::consumeEvent,
+        onBack = onBack,
         onOpenSettings = onOpenSettings
     )
 }
@@ -106,18 +111,26 @@ fun ChatContent(
     onSend: (String) -> Unit,
     onCancel: () -> Unit,
     onSwitchModel: (AiModel) -> Unit,
+    draft: String = "",
+    onDraft: (String) -> Unit = {},
     onConsumeEvent: () -> Unit,
+    onBack: () -> Unit = {},
     onOpenSettings: () -> Unit = {}
 ) {
     val snackbar = remember { SnackbarHostState() }
     val listState = rememberLazyListState()
-    var input by remember { mutableStateOf("") }
+    var input by remember(draft) { mutableStateOf(draft) }
+    val displayed = state.displayMessages
 
     // Surface BYOK / stream errors once.
     LaunchedEffect(state.lastEvent) {
         when (val e = state.lastEvent) {
             is ChatEvent.NeedsApiKey -> {
                 snackbar.showSnackbar("Missing ${e.providerName} key — open Settings to add (BYOK).")
+                onConsumeEvent()
+            }
+            is ChatEvent.CredentialError -> {
+                snackbar.showSnackbar("Stored ${e.providerName} key is unreadable — re-enter it in Settings.")
                 onConsumeEvent()
             }
             is ChatEvent.StreamFailed -> {
@@ -129,8 +142,8 @@ fun ChatContent(
     }
 
     // Autoscroll on new message / new token.
-    LaunchedEffect(state.messages.size, state.streamingText.length) {
-        val total = state.messages.size + if (state.streamingText.isNotEmpty()) 1 else 0
+    LaunchedEffect(displayed.size, state.streamingText.length) {
+        val total = displayed.size + if (state.streamingText.isNotEmpty()) 1 else 0
         if (total > 0) listState.animateScrollToItem(maxOf(0, total - 1))
     }
 
@@ -139,8 +152,10 @@ fun ChatContent(
         topBar = {
             WhatsAppHeader(
                 currentModel = state.currentModel,
+                mode = state.mode,
                 isStreaming = state.isStreaming,
                 onSwitchModel = onSwitchModel,
+                onBack = onBack,
                 onOpenSettings = onOpenSettings
             )
         },
@@ -148,11 +163,12 @@ fun ChatContent(
         bottomBar = {
             InputBar(
                 value = input,
-                onValue = { input = it },
+                onValue = { input = it; onDraft(it) },
                 isStreaming = state.isStreaming,
                 onSend = {
                     onSend(input)
                     input = ""
+                    onDraft("")
                 },
                 onCancel = onCancel
             )
@@ -165,10 +181,10 @@ fun ChatContent(
                 contentPadding = PaddingValues(start = 10.dp, end = 10.dp, top = 12.dp, bottom = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                if (state.messages.isEmpty() && state.streamingText.isEmpty()) {
-                    item(key = "__empty__") { EmptyChatIntro(state.currentModel.displayName) }
+                if (displayed.isEmpty() && state.streamingText.isEmpty()) {
+                    item(key = "__empty__") { EmptyChatIntro(state.currentModel.displayName, state.mode) }
                 }
-                items(state.messages, key = { it.id }) { msg ->
+                items(displayed, key = { it.id }) { msg ->
                     MessageBubble(msg)
                 }
                 if (state.streamingText.isNotEmpty()) {
@@ -188,8 +204,10 @@ fun ChatContent(
 @Composable
 private fun WhatsAppHeader(
     currentModel: AiModel,
+    mode: ChatMode,
     isStreaming: Boolean,
     onSwitchModel: (AiModel) -> Unit,
+    onBack: () -> Unit,
     onOpenSettings: () -> Unit
 ) {
     Surface(color = Color.White, shadowElevation = 2.dp) {
@@ -197,8 +215,8 @@ private fun WhatsAppHeader(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconButton(onClick = onOpenSettings, modifier = Modifier.size(40.dp)) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = WhatsAppText)
+            IconButton(onClick = onBack, modifier = Modifier.size(40.dp)) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back to chats", tint = WhatsAppText)
             }
             Spacer(Modifier.width(2.dp))
             Box(
@@ -218,12 +236,31 @@ private fun WhatsAppHeader(
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = if (isStreaming) "typing…" else "online • BYOK private chat",
+                    text = when {
+                        isStreaming -> "receiving…"
+                        mode == ChatMode.DEMO -> "Demo mode · local sample data"
+                        else -> "BYOK · your provider key"
+                    },
                     color = WhatsAppMuted,
                     style = MaterialTheme.typography.labelMedium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+            }
+            if (mode == ChatMode.DEMO) {
+                Surface(
+                    color = Color(0xFFFFF2CC),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.padding(end = 4.dp)
+                ) {
+                    Text(
+                        "DEMO",
+                        color = Color(0xFF8A6D00),
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
             }
             ModelSwitcher(current = currentModel, onSelect = onSwitchModel)
             IconButton(onClick = onOpenSettings, modifier = Modifier.size(40.dp)) {
@@ -299,7 +336,7 @@ private fun ChatWallpaper(modifier: Modifier = Modifier, content: @Composable ()
 }
 
 @Composable
-private fun EmptyChatIntro(modelName: String) {
+private fun EmptyChatIntro(modelName: String, mode: ChatMode) {
     Column(
         modifier = Modifier.fillMaxWidth().padding(top = 36.dp),
         horizontalAlignment = Alignment.CenterHorizontally
@@ -311,7 +348,11 @@ private fun EmptyChatIntro(modelName: String) {
             modifier = Modifier.widthIn(max = 320.dp)
         ) {
             Text(
-                text = "Messages are private to this device. Start chatting with $modelName.",
+                text = if (mode == ChatMode.DEMO) {
+                    "Demo mode: replies are generated locally from sample data. No account, no key, nothing sent."
+                } else {
+                    "BYOK mode: your message and chat history are stored on this device and sent to $modelName for processing. No end-to-end encryption."
+                },
                 color = Color(0xFF54656F),
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
@@ -355,11 +396,6 @@ private fun MessageBubble(msg: ChatMessage) {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     CopyButton(msg.content)
-                    Text("now", color = WhatsAppMuted, style = MaterialTheme.typography.labelSmall)
-                    if (isUser) {
-                        Spacer(Modifier.width(3.dp))
-                        Text("✓✓", color = WhatsAppGreen, style = MaterialTheme.typography.labelSmall)
-                    }
                 }
             }
         }

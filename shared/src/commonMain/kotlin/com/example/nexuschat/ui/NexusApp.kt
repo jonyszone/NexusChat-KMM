@@ -43,6 +43,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -55,7 +56,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.nexuschat.presentation.ChatViewModel
+import com.example.nexuschat.data.model.ChatMessage
+import com.example.nexuschat.data.model.ChatMode
 import com.example.nexuschat.data.network.ApiKeyStore
+import com.example.nexuschat.domain.repository.ChatModeStore
 import com.example.nexuschat.domain.repository.ChatSession
 
 private val NexusGreen = Color(0xFF25D366)
@@ -65,19 +69,50 @@ private val NexusMuted = Color(0xFF667781)
 
 private enum class NexusTab { CHATS, UPDATES, COMMUNITIES, CALLS }
 
+private sealed interface NexusRoute {
+    data object Inbox : NexusRoute
+    data class Chat(val sessionId: String) : NexusRoute
+    data object Settings : NexusRoute
+    data object Profile : NexusRoute
+}
+
 @Composable
-fun NexusApp(viewModel: ChatViewModel, apiKeyStore: ApiKeyStore? = null) {
+fun NexusApp(
+    viewModel: ChatViewModel,
+    apiKeyStore: ApiKeyStore? = null,
+    modeStore: ChatModeStore? = null,
+    onRegisterBackHandler: ((() -> Boolean) -> Unit) = {}
+) {
     val state by viewModel.ui.collectAsState()
     var tab by remember { mutableStateOf(NexusTab.CHATS) }
-    var detail by remember { mutableStateOf(false) }
-    var profile by remember { mutableStateOf(false) }
-    var settings by remember { mutableStateOf(false) }
+    var route by remember { mutableStateOf<NexusRoute>(NexusRoute.Inbox) }
+    var settingsReturn by remember { mutableStateOf<NexusRoute>(NexusRoute.Inbox) }
     var menu by remember { mutableStateOf(false) }
 
+    SideEffect {
+        onRegisterBackHandler {
+            when (route) {
+                NexusRoute.Inbox -> false
+                is NexusRoute.Chat -> { route = NexusRoute.Inbox; true }
+                NexusRoute.Settings -> { route = settingsReturn; true }
+                NexusRoute.Profile -> { route = NexusRoute.Inbox; true }
+            }
+        }
+    }
+
     when {
-        settings && apiKeyStore != null -> SettingsScreen(keyStore = apiKeyStore, onBack = { settings = false })
-        profile -> ProfileScreen(onBack = { profile = false })
-        detail -> ChatScreen(viewModel = viewModel, onOpenSettings = { settings = true })
+        route is NexusRoute.Settings && apiKeyStore != null -> SettingsScreen(
+            keyStore = apiKeyStore,
+            mode = state.mode,
+            onModeChange = viewModel::setMode,
+            onBack = { route = settingsReturn }
+        )
+        route is NexusRoute.Profile -> ProfileScreen(onBack = { route = NexusRoute.Inbox })
+        route is NexusRoute.Chat -> ChatScreen(
+            viewModel = viewModel,
+            onBack = { route = NexusRoute.Inbox },
+            onOpenSettings = { settingsReturn = route; route = NexusRoute.Settings }
+        )
         else -> Scaffold(
             containerColor = Color.White,
             topBar = {
@@ -85,7 +120,7 @@ fun NexusApp(viewModel: ChatViewModel, apiKeyStore: ApiKeyStore? = null) {
                     tab = tab,
                     menu = menu,
                     onMenu = { menu = !menu },
-                    onProfile = { profile = true }
+                    onProfile = { route = NexusRoute.Profile }
                 )
             },
             bottomBar = {
@@ -101,19 +136,31 @@ fun NexusApp(viewModel: ChatViewModel, apiKeyStore: ApiKeyStore? = null) {
                 }
             },
             floatingActionButton = {
-                if (tab != NexusTab.CALLS) {
+                if (tab == NexusTab.CHATS) {
                     Surface(
                         color = NexusDarkGreen,
                         shape = RoundedCornerShape(16.dp),
                         shadowElevation = 5.dp,
                         modifier = Modifier.size(56.dp)
-                    ) { IconButton(onClick = {}) { Icon(Icons.Default.Add, "New", tint = Color.White) } }
+                    ) {
+                        IconButton(onClick = {
+                            route = NexusRoute.Chat(viewModel.newSession())
+                        }) { Icon(Icons.Default.Add, "New chat", tint = Color.White) }
+                    }
                 }
             }
         ) { padding ->
             Box(Modifier.fillMaxSize().padding(padding)) {
                 when (tab) {
-                    NexusTab.CHATS -> ChatsScreen(sessions = state.sessions, onOpenChat = { detail = true })
+                    NexusTab.CHATS -> ChatsScreen(
+                        sessions = state.sessions,
+                        mode = state.mode,
+                        selectedId = state.selectedSessionId,
+                        onOpenChat = { sessionId ->
+                            viewModel.selectSession(sessionId)
+                            route = NexusRoute.Chat(sessionId)
+                        }
+                    )
                     NexusTab.UPDATES -> UpdatesScreen()
                     NexusTab.COMMUNITIES -> CommunitiesScreen()
                     NexusTab.CALLS -> CallsScreen()
@@ -121,7 +168,7 @@ fun NexusApp(viewModel: ChatViewModel, apiKeyStore: ApiKeyStore? = null) {
                 if (menu) {
                     HomeMenu(
                         onDismiss = { menu = false },
-                        onSettings = { menu = false; settings = true },
+                        onSettings = { menu = false; settingsReturn = route; route = NexusRoute.Settings },
                         modifier = Modifier.align(Alignment.TopEnd)
                     )
                 }
@@ -141,30 +188,63 @@ private fun HomeTopBar(tab: NexusTab, menu: Boolean, onMenu: () -> Unit, onProfi
 }
 
 @Composable
-private fun ChatsScreen(sessions: List<ChatSession>, onOpenChat: () -> Unit) {
+private fun ChatsScreen(
+    sessions: List<ChatSession>,
+    mode: ChatMode,
+    selectedId: String?,
+    onOpenChat: (String) -> Unit
+) {
     Column(Modifier.fillMaxSize()) {
         Surface(color = Color(0xFFF3F1F2), shape = RoundedCornerShape(28.dp), modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
             Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.Search, "Search", tint = NexusMuted); Spacer(Modifier.width(12.dp)); Text("Ask Nexus AI or Search", color = NexusMuted)
             }
         }
-        Row(Modifier.fillMaxWidth().clickable { }.padding(horizontal = 18.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.Archive, "Archived", tint = NexusMuted); Spacer(Modifier.width(22.dp)); Text("Archived", fontWeight = FontWeight.Medium) }
-        val chats = sessions.map { session ->
-            session.title to "Model: ${session.modelId}"
-        }.ifEmpty {
-            listOf("Nexus AI" to "Start a private conversation")
+        if (mode == ChatMode.DEMO) {
+            Surface(color = Color(0xFFFFF2CC), shape = RoundedCornerShape(8.dp), modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+                Text("Demo mode — local sample data, no provider calls.", color = Color(0xFF8A6D00), style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp))
+            }
         }
-        LazyColumn { items(chats) { (name, preview) -> ChatRow(name, preview, onOpenChat) } }
+        if (sessions.isEmpty()) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 40.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("No chats yet", fontWeight = FontWeight.SemiBold, color = NexusText)
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    if (mode == ChatMode.DEMO) "Start a demo chat with the + button." else "Add a provider key in Settings, then start a chat with the + button.",
+                    color = NexusMuted,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+            return@Column
+        }
+        LazyColumn { items(sessions, key = { it.id }) { session -> ChatRow(session, selectedId == session.id, onOpenChat) } }
     }
 }
 
 @Composable
-private fun ChatRow(name: String, preview: String, onClick: () -> Unit) {
-    Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(52.dp).clip(CircleShape).background(Color(0xFFD9EAD3)), contentAlignment = Alignment.Center) { Text(name.take(1), color = NexusDarkGreen, fontWeight = FontWeight.Bold) }
+private fun ChatRow(session: ChatSession, selected: Boolean, onOpen: (String) -> Unit) {
+    Row(
+        Modifier.fillMaxWidth()
+            .background(if (selected) Color(0xFFF0F2F5) else Color.Transparent)
+            .clickable { onOpen(session.id) }
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(Modifier.size(52.dp).clip(CircleShape).background(Color(0xFFD9EAD3)), contentAlignment = Alignment.Center) { Text(session.title.take(1).uppercase(), color = NexusDarkGreen, fontWeight = FontWeight.Bold) }
         Spacer(Modifier.width(14.dp))
-        Column(Modifier.weight(1f)) { Text(name, fontWeight = FontWeight.SemiBold, color = NexusText); Text(preview, color = NexusMuted, maxLines = 1) }
-        Text("Yesterday", color = NexusMuted, style = MaterialTheme.typography.labelSmall)
+        Column(Modifier.weight(1f)) { Text(session.title, fontWeight = FontWeight.SemiBold, color = NexusText, maxLines = 1); Text("Model: ${session.modelId}", color = NexusMuted, maxLines = 1) }
+        Text(relativeTime(session.updatedAt), color = NexusMuted, style = MaterialTheme.typography.labelSmall)
+    }
+}
+
+private fun relativeTime(epochMillis: Long): String {
+    if (epochMillis <= 0L) return ""
+    val minutes = (ChatMessage.now() - epochMillis) / 60_000L
+    return when {
+        minutes < 1 -> "now"
+        minutes < 60 -> "${minutes}m"
+        minutes < 60 * 24 -> "${minutes / 60}h"
+        else -> "${minutes / (60 * 24)}d"
     }
 }
 
