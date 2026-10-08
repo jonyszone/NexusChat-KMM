@@ -1,0 +1,36 @@
+CREATE TABLE messenger_conversation (
+    server_url TEXT NOT NULL,
+    account_id TEXT NOT NULL,
+    id TEXT NOT NULL,
+    members_json TEXT NOT NULL,
+    cursor INTEGER NOT NULL DEFAULT 0 CHECK(cursor >= 0),
+    PRIMARY KEY(server_url, account_id, id)
+);
+
+CREATE TABLE messenger_message (
+    server_url TEXT NOT NULL,
+    account_id TEXT NOT NULL,
+    conversation_id TEXT NOT NULL,
+    id TEXT NOT NULL,
+    sender_id TEXT NOT NULL,
+    sequence INTEGER NOT NULL CHECK(sequence > 0),
+    idempotency_key TEXT NOT NULL,
+    body TEXT NOT NULL,
+    PRIMARY KEY(server_url, account_id, conversation_id, id),
+    UNIQUE(server_url, account_id, conversation_id, sequence),
+    FOREIGN KEY(server_url, account_id, conversation_id)
+        REFERENCES messenger_conversation(server_url, account_id, id) ON DELETE CASCADE
+);
+
+CREATE TABLE messenger_outbox (
+    server_url TEXT NOT NULL,
+    account_id TEXT NOT NULL,
+    conversation_id TEXT NOT NULL,
+    idempotency_key TEXT NOT NULL,
+    body TEXT NOT NULL,
+    state TEXT NOT NULL CHECK(state IN ('PENDING', 'SENDING', 'FAILED')),
+    PRIMARY KEY(server_url, account_id, idempotency_key),
+    FOREIGN KEY(server_url, account_id, conversation_id)
+        REFERENCES messenger_conversation(server_url, account_id, id) ON DELETE CASCADE
+);
+

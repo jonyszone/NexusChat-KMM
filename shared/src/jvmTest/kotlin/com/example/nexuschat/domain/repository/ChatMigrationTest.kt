@@ -114,7 +114,21 @@ class ChatMigrationTest {
     }
 
     @Test
-    fun schema_version_is_two() {
-        assertEquals(2L, NexusChatDatabase.Schema.version)
+    fun schema_version_is_three() {
+        assertEquals(3L, NexusChatDatabase.Schema.version)
+    }
+
+    @Test
+    fun migrating_v1_to_current_keeps_ai_history_and_adds_account_scoped_messaging() = runBlocking {
+        val driver = v1Database()
+        driver.execute(null, "PRAGMA foreign_keys = ON", 0)
+        NexusChatDatabase.Schema.migrate(driver, 1, NexusChatDatabase.Schema.version)
+        val database = NexusChatDatabase(driver)
+        assertEquals(2, SqlDelightChatStorage(database).observeMessages("legacy-session").first().size)
+        val messaging = com.example.nexuschat.domain.messenger.SqlDelightMessengerStorage(database)
+        val identity = com.example.nexuschat.domain.messenger.MessengerIdentity("https://chat.test", "alice")
+        messaging.saveConversations(identity, listOf(com.example.nexuschat.domain.messenger.BackendConversation("conversation", setOf("alice", "bob"))))
+        assertEquals("conversation", messaging.conversations(identity).single().id)
+        driver.close()
     }
 }
