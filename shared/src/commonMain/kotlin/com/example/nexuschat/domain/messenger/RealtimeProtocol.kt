@@ -7,8 +7,11 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
+import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.json.JsonNamingStrategy
 
 const val REALTIME_PROTOCOL_VERSION = 1
+enum class RealtimeWireFormat { KOTLIN_FIXTURE, RUST }
 
 @Serializable
 sealed class ClientCommand {
@@ -76,14 +79,20 @@ internal val realtimeJson = Json {
     ignoreUnknownKeys = false
 }
 
-fun encodeClientCommand(id: String, command: ClientCommand): String {
-    val commandObject = realtimeJson.encodeToJsonElement(ClientCommand.serializer(), command).jsonObject
-    return realtimeJson.encodeToString(JsonObject.serializer(), buildJsonObject {
+@OptIn(ExperimentalSerializationApi::class)
+private val rustRealtimeJson = Json(realtimeJson) { namingStrategy = JsonNamingStrategy.SnakeCase }
+
+private fun protocolJson(format: RealtimeWireFormat) = if (format == RealtimeWireFormat.RUST) rustRealtimeJson else realtimeJson
+
+fun encodeClientCommand(id: String, command: ClientCommand, format: RealtimeWireFormat = RealtimeWireFormat.KOTLIN_FIXTURE): String {
+    val json = protocolJson(format)
+    val commandObject = json.encodeToJsonElement(ClientCommand.serializer(), command).jsonObject
+    return json.encodeToString(JsonObject.serializer(), buildJsonObject {
         put("version", REALTIME_PROTOCOL_VERSION)
         put("id", id)
         commandObject.forEach { (key, value) -> put(key, value) }
     })
 }
 
-fun decodeServerEnvelope(value: String): ServerEnvelope =
-    realtimeJson.decodeFromString(ServerEnvelope.serializer(), value)
+fun decodeServerEnvelope(value: String, format: RealtimeWireFormat = RealtimeWireFormat.KOTLIN_FIXTURE): ServerEnvelope =
+    protocolJson(format).decodeFromString(ServerEnvelope.serializer(), value)

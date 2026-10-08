@@ -37,6 +37,7 @@ interface RealtimeMessengerClient {
 class DefaultRealtimeMessengerClient(
     private val transport: RealtimeTransport,
     private val scope: CoroutineScope,
+    private val wireFormat: RealtimeWireFormat = RealtimeWireFormat.KOTLIN_FIXTURE,
     private val requestId: () -> String = { Uuid.random().toString() },
 ) : RealtimeMessengerClient {
     private val state = MutableStateFlow(RealtimeConnectionState.DISCONNECTED)
@@ -112,11 +113,11 @@ class DefaultRealtimeMessengerClient(
     private suspend fun request(command: ClientCommand): ServerPayload = requestMutex.withLock {
         check(state.value == RealtimeConnectionState.CONNECTED) { "Realtime client is not connected" }
         val id = requestId()
-        transport.send(encodeClientCommand(id, command))
+        transport.send(encodeClientCommand(id, command, wireFormat))
         var result: ServerPayload? = null
         while (result == null) {
             val envelope = try {
-                decodeServerEnvelope(received.receive())
+                decodeServerEnvelope(received.receive(), wireFormat)
             } catch (cause: Throwable) {
                 throw RealtimeClientError.Protocol(cause)
             }
@@ -133,7 +134,7 @@ class DefaultRealtimeMessengerClient(
 
 private fun ServerPayload.throwIfError(): ServerPayload = when (this) {
     is ServerPayload.Error -> throw when (code) {
-        "UNAUTHORIZED", "FORBIDDEN", "NOT_MEMBER" -> RealtimeClientError.Unauthorized()
+        "UNAUTHORIZED", "FORBIDDEN", "NOT_MEMBER", "NotMember" -> RealtimeClientError.Unauthorized()
         else -> RealtimeClientError.Remote(code, message)
     }
     else -> this
