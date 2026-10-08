@@ -3,6 +3,13 @@
 Status: Accepted for the first local vertical slice; backend slice implemented
 Date: 2026-10-07
 
+Implementation update (October 8, 2026): the Android client now has authenticated
+Rust HTTP messaging with foreground WebSocket change notifications, independent
+secure session storage, account-scoped SQLDelight history/outbox, local client/server
+restart interoperability, and PostgreSQL-backed real-device network tests. See
+[the authenticated messaging slice](AUTHENTICATED_MESSAGING_SLICE.md). The Kotlin
+fixture boundaries below remain available; they are separate from this runtime flow.
+
 ## Decision
 
 The shared `commonMain` messenger domain is the protocol-neutral contract for the first local slice. It defines serializable users, devices, conversations, members, messages, delivery states, ordering/idempotency metadata, durable outbox operations, presence/typing, and call signaling state/signal models. `RealtimeTransport`, `ContactsRepository`, `MediaGateway`, `PushGateway`, `CallsGateway`, and `MessengerRepository` are dependency-inversion boundaries; no implementation in this slice claims network delivery.

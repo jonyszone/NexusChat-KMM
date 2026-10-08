@@ -2,6 +2,61 @@
 
 Updated: October 8, 2026
 
+## Foreground realtime delivery
+
+- Added a bearer-authenticated read-only WebSocket change feed. The foreground
+  client synchronizes authorized HTTP history immediately on READY/change hints;
+  locally committed cursors and durable outbox remain authoritative.
+- Added bounded/coalesced notifications, reconnect backoff, foreground/background
+  lifecycle cancellation, and logout cleanup. Five-second polling remains a recovery
+  fallback. Backend event delivery checks current session/membership; messaging
+  command sockets revalidate before every command.
+- Shared lifecycle/protocol tests, Rust event authorization/revocation/lag tests,
+  full Rust tests, PostgreSQL regression tests, Android build, and lint passed.
+- The expanded real-device test passed all four tests on RMX3261 against PostgreSQL:
+  live recipient hints, outsider isolation, missed-history reconnect, and revoked
+  feed closure. Temporary server, cluster, and forwarding were cleaned up.
+- Notifications are process-local, not distributed fan-out, background push,
+  delivered/read receipts, TLS acceptance, or a two-device LAN/UI workflow test.
+
+## Authenticated messaging development
+
+- The Android first screen now supports Rust registration/login, restored sessions,
+  conversation listing/creation, sending, history recovery, refresh, and sign-out.
+  The existing Demo/BYOK assistant remains separate and optional.
+- Added typed bearer-authenticated Rust HTTP contracts and explicit snake_case
+  realtime formatting while preserving the Kotlin development fixture format.
+- Android sessions use a separate Keystore AES-GCM credential store. SQLDelight
+  schema v3 adds server/account-scoped messenger history, cursors, and durable
+  outbox retry/recovery; existing assistant history is preserved by migration.
+- Added authorization/protocol, migration/cache, outbox, and ViewModel tests plus
+  an actual KMM/Rust process-bridge interoperability test across server/client
+  storage restart. It proves local file-fixture behavior, not PostgreSQL/TCP/TLS.
+- `scripts/verify-rust-interop.sh` builds the sibling Rust fixture and enables the
+  normally opt-in interop test. Shared JVM tests, debug assembly, and lint passed.
+- Added isolated Android Keystore instrumentation tests for session persistence,
+  ciphertext freshness/replacement, tamper rejection/recovery, and sign-out clearing.
+  `scripts/verify-android-device.sh` selects an explicit connected device to run them;
+  `:app:assembleDebugAndroidTest`, `:app:assembleDebug`, and `:app:lintDebug` passed.
+- All three Keystore instrumentation tests passed on a wireless-connected RMX3261.
+  The verifier now builds/installs APKs and runs instrumentation directly through
+  ADB, avoiding the uncached Gradle unified-test-platform dependency. App cold launch
+  and a screenshot check of the initial sign-in screen also passed.
+- Earlier emulator attempts failed with socket restrictions and a pending snapshot
+  error. A later loopback Rust server bind succeeded through the local shell.
+  `scripts/verify-android-network.sh` passed all four instrumentation tests on RMX3261
+  against a disposable PostgreSQL-backed HTTP server through ADB reverse forwarding.
+  Verified real-client sends/retries, membership rejection, local cache reopen/cursor
+  catch-up, monotonic ACKs, and session revocation. Server, cluster, test files, and
+  forwarding were cleaned up. Full UI workflow, two-device LAN, and TLS acceptance
+  remain open; foreground realtime verification subsequently passed above. The sibling
+  backend's disposable PostgreSQL 18.4 verification now passed all six top-level
+  tests (including all three live database tests), with clean cluster shutdown.
+- Working repositories are now under `/home/shafi/StudioProjects/NexusChat/`.
+  Details: `docs/AUTHENTICATED_MESSAGING_SLICE.md`. Historical sections below
+  describe the earlier checkpoint. Development is committed in related slices;
+  no push was made.
+
 ## Current repository state
 
 - Branch: `master`

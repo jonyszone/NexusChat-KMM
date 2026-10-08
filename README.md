@@ -1,13 +1,20 @@
 # NexusChat KMP
 
-**NexusChat** is an Android-first Kotlin Multiplatform (KMP) BYOK AI chat beta. Demo mode is explicit; BYOK keys, local SQLDelight history, and provider transport are wired for the configured Android/JVM scope.
+**NexusChat** is an Android-first Kotlin Multiplatform (KMP) messenger in development,
+with an optional Demo/BYOK AI assistant. The Android first screen supports
+authenticated Rust-backend messaging, local history, and durable retries. See
+[the authenticated messaging slice](docs/AUTHENTICATED_MESSAGING_SLICE.md) for setup,
+verification, and remaining work.
 
 ---
 
 ## 1. Core Architecture
 
 - **Tech Stack:** Kotlin Multiplatform, Ktor Client, Kotlin Coroutines & Flows, Compose Multiplatform for UI.
-- **Implemented layers:** Android Keystore-backed BYOK storage, SQLDelight local persistence, and provider transport behind repository interfaces. Sync, human messaging, and E2EE are not implemented.
+- **Implemented layers:** Android Keystore-backed session/BYOK storage, account-scoped
+  SQLDelight messaging/outbox persistence, foreground WebSocket change notifications
+  with authenticated HTTP synchronization/recovery, and
+  separate assistant/provider repositories. E2EE, push, media, and calls remain unfinished.
 
 ---
 
@@ -76,8 +83,9 @@ All shared Kotlin code lives in `shared/src/commonMain`; Android, iOS and Deskto
    ```bash
    ./gradlew :shared:compileKotlinJvm   # or the specific target
    ```
-2. **Run the Android demo** from Android Studio or with `./gradlew :app:installDebug` on a connected device.
-3. **BYOK setup:** choose BYOK in Settings and enter a provider key. Live provider validation and release signing are intentionally not part of local verification.
+2. **Run the Android app** from Android Studio or with `./gradlew :app:installDebug` on a connected device. Sign in/register against the Rust backend; debug emulator builds default to `http://10.0.2.2:3000`.
+3. **Optional assistant:** open Assistant from the toolbar, then choose Demo or BYOK in Settings. Provider credentials are independent of messenger accounts.
+4. **Local Rust interoperability:** with JDK 17, run `bash scripts/verify-rust-interop.sh`. It verifies real client/router contracts over process I/O, including restart, without requiring network sockets or PostgreSQL.
 
 ---
 
