@@ -26,6 +26,7 @@ interface RealtimeMessengerClient {
     val connectionState: StateFlow<RealtimeConnectionState>
     val cursors: StateFlow<Map<String, Long>>
     suspend fun connect(devUserId: String)
+    suspend fun connect(session: DeviceSession)
     suspend fun disconnect()
     suspend fun send(conversationId: String, senderId: String, idempotencyKey: String, body: String): WireMessage
     suspend fun history(conversationId: String, accountId: String, after: Long? = null): List<WireMessage>
@@ -57,6 +58,18 @@ class DefaultRealtimeMessengerClient(
                 // The request methods correlate their own responses by envelope id.
                 received.send(raw)
             }
+        }
+        state.value = RealtimeConnectionState.CONNECTED
+    }
+
+    override suspend fun connect(session: DeviceSession) {
+        if (state.value == RealtimeConnectionState.CONNECTED) return
+        state.value = if (identity == null) RealtimeConnectionState.CONNECTING else RealtimeConnectionState.RECONNECTING
+        identity = session.userId
+        transport.connect(session)
+        reader?.cancel()
+        reader = scope.launch {
+            transport.incoming.collect { raw -> received.send(raw) }
         }
         state.value = RealtimeConnectionState.CONNECTED
     }

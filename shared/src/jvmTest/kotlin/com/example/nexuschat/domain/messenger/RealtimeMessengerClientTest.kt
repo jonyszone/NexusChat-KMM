@@ -19,9 +19,11 @@ class RealtimeMessengerClientTest {
         private val incomingChannel = Channel<String>(Channel.UNLIMITED)
         override val incoming: Flow<String> = incomingChannel.receiveAsFlow()
         var connectedAs: String? = null
+        var connectedSession: DeviceSession? = null
         var sent: MutableList<String> = mutableListOf()
         var respond: suspend (String) -> Unit = {}
         override suspend fun connect(devUserId: String) { connectedAs = devUserId }
+        override suspend fun connect(session: DeviceSession) { connectedSession = session }
         override suspend fun send(text: String) { sent += text; respond(text) }
         override suspend fun disconnect() { connectedAs = null }
         suspend fun emit(value: String) { incomingChannel.send(value) }
@@ -79,5 +81,18 @@ class RealtimeMessengerClientTest {
         c.connect("unknown")
         assertFailsWith<RealtimeClientError.Unauthorized> { c.history("c", "unknown") }
         Unit
+    }
+
+    @Test
+    fun authenticated_session_is_passed_to_transport_without_using_dev_identity() = runBlocking {
+        val fake = FakeTransport()
+        val session = DeviceSession("alice", "android-1", "access-token")
+        val c = client(fake)
+
+        c.connect(session)
+
+        assertEquals(session, fake.connectedSession)
+        assertEquals(null, fake.connectedAs)
+        assertEquals(RealtimeConnectionState.CONNECTED, c.connectionState.value)
     }
 }

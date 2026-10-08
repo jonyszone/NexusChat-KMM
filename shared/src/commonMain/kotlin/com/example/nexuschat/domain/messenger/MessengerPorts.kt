@@ -5,6 +5,9 @@ import kotlinx.coroutines.flow.Flow
 interface RealtimeTransport {
     val incoming: Flow<String>
     suspend fun connect(devUserId: String)
+    /** Connect with a verified application session; implementations must not log the token. */
+    suspend fun connect(session: DeviceSession): Unit =
+        error("This realtime transport does not support authenticated sessions")
     suspend fun send(text: String)
     suspend fun disconnect()
 }

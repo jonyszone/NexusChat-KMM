@@ -1,6 +1,7 @@
 package com.example.nexuschat.data.network
 
 import com.example.nexuschat.domain.messenger.RealtimeTransport
+import com.example.nexuschat.domain.messenger.DeviceSession
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.websocket.DefaultClientWebSocketSession
 import io.ktor.client.plugins.websocket.webSocketSession
@@ -14,7 +15,7 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.map
 
-/** Development-only Rust realtime adapter. It sends only X-Dev-User-Id. */
+/** Rust realtime adapter. The development overload is retained for local fixtures only. */
 class KtorRustRealtimeTransport(
     private val http: HttpClient,
     private val endpoint: String,
@@ -29,6 +30,13 @@ class KtorRustRealtimeTransport(
     override suspend fun connect(devUserId: String) {
         session = http.webSocketSession(HttpMethod.Get, endpoint) {
             header("X-Dev-User-Id", devUserId)
+        }
+    }
+
+    override suspend fun connect(session: DeviceSession) {
+        this.session = http.webSocketSession(HttpMethod.Get, endpoint) {
+            header("Authorization", "Bearer ${session.accessToken}")
+            header("X-Device-Id", session.deviceId)
         }
     }
 
