@@ -11,9 +11,14 @@ import com.example.nexuschat.domain.repository.OfflineFirstChatRepository
 import com.example.nexuschat.domain.repository.SqlDelightChatStorage
 import com.example.nexuschat.presentation.ChatViewModel
 import com.example.nexuschat.presentation.ChatSavedState
+import com.example.nexuschat.presentation.MessengerViewModel
+import com.example.nexuschat.data.network.RustMessagingApi
+import com.example.nexuschat.data.network.KtorMessengerUpdates
+import com.example.nexuschat.domain.messenger.SqlDelightMessengerStorage
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.HttpTimeout
+import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.json.Json
@@ -51,6 +56,20 @@ class AppContainer(context: Context) {
             }
         )
     private val database = NexusChatDatabase(databaseDriver)
+    private val messengerSessions = AndroidMessengerSessionStore(context.applicationContext)
+    private val messagingHttpClient = HttpClient(OkHttp) {
+        followRedirects = false
+        expectSuccess = false
+        install(WebSockets)
+        install(HttpTimeout) {
+            connectTimeoutMillis = 10_000
+            requestTimeoutMillis = 15_000
+            socketTimeoutMillis = 15_000
+        }
+    }
+    private val messagingApi = RustMessagingApi(messagingHttpClient, allowInsecureTransport = BuildConfig.DEBUG)
+    private val messagingUpdates = KtorMessengerUpdates(messagingHttpClient, allowInsecureTransport = BuildConfig.DEBUG)
+    private val messengerStorage = SqlDelightMessengerStorage(database)
 
     private val demoRepository = DemoChatRepository()
 
@@ -67,9 +86,12 @@ class AppContainer(context: Context) {
     )
 
     fun createChatViewModel(savedState: ChatSavedState? = null): ChatViewModel = ChatViewModel(repository, modeStore, savedState)
+    fun createMessengerViewModel(savedState: ChatSavedState? = null): MessengerViewModel =
+        MessengerViewModel(messagingApi, messengerSessions, messengerStorage, savedState, updates = messagingUpdates)
 
     /** Only call when the owning process/application is actually going away. */
     fun close() {
+        messagingHttpClient.close()
         httpClient.close()
         databaseDriver.close()
     }
