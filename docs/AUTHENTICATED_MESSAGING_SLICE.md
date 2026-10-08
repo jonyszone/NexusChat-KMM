@@ -134,13 +134,43 @@ phone unlocked succeeded.
 
 The local interop test, shared JVM suite, debug assembly, and Android lint passed.
 The earlier read-only emulator attempt failed with sandbox socket restrictions
-and a pending snapshot error. Full UI workflow, two-device LAN routing, and TLS
-verification remain open despite the successful device Keystore and forwarded
+and a pending snapshot error. Full UI workflow, two-device LAN routing, and public
+TLS deployment verification remain open despite the successful device Keystore and forwarded
 HTTP/PostgreSQL checks.
 Live PostgreSQL verification subsequently passed after installing PostgreSQL 18.4:
 the sibling backend's disposable runner passed all six top-level tests, including
 all three live database tests, over a private Unix socket and cleaned up its cluster.
 This does not extend the KMM process-bridge test to PostgreSQL or certify TCP/TLS.
+
+## Local TLS verification
+
+The same PostgreSQL-backed device runner has an opt-in HTTPS/WSS mode:
+
+```sh
+NEXUS_TEST_TLS=true ANDROID_SERIAL=<device-serial> JAVA_HOME=/path/to/jdk17 bash scripts/verify-android-network.sh
+```
+
+It generates a one-day ephemeral CA and server certificate for `127.0.0.1`, starts
+the loopback-only `local-tls-proxy.py` on port 8443, verifies readiness with curl's
+certificate validation, and forwards that port through ADB. The proxy preserves
+HTTP upgrades/WebSocket frames and requires TLS 1.2 or newer. Private keys remain
+in the runner's private temporary directory and are removed during cleanup.
+
+The public CA is passed to instrumentation, not installed into Android's trust store.
+Only `androidTest` clients construct a trust manager for it; production clients and
+the default hostname verifier are unchanged. In TLS mode the messaging adapter's
+insecure-transport option is disabled. The real messaging/realtime/cache/session
+test runs over HTTPS/WSS, and `AndroidTlsMessagingTest` verifies both HTTP and
+WebSockets reject an untrusted certificate and a mismatched hostname. It also checks
+that strict messaging transport rejects a plaintext server URL. No trust-all manager,
+hostname-verifier bypass, or curl `--insecure` is used.
+
+All five device tests passed on RMX3261 with PostgreSQL behind this TLS fixture;
+instrumentation assembly and lint also passed. Cleanup removed forwarding, proxy,
+backend, database, certificates, and test storage. The original four-test HTTP mode
+also passed again after the test-client changes. This is local client transport
+verification through ADB, not publicly trusted production deployment, certificate
+renewal, a hardened proxy, two-device LAN routing, or full UI workflow acceptance.
 
 ## Remaining scope
 

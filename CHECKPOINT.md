@@ -2,6 +2,20 @@
 
 Updated: October 8, 2026
 
+## Local HTTPS/WSS verification
+
+- Added opt-in `NEXUS_TEST_TLS=true` to the disposable Android network runner.
+  It generates ephemeral CA/server certificates and runs a loopback-only TLS proxy;
+  the real messaging flow then uses HTTPS/WSS through ADB reverse forwarding.
+- Temporary CA trust exists only in instrumentation clients. Production trust and
+  hostname verification remain unchanged; strict messaging mode rejects HTTP.
+- All five tests passed on RMX3261 against PostgreSQL, including HTTP/WebSocket
+  rejection of untrusted certificates and mismatched hostnames. Instrumentation
+  assembly and lint passed; the original four-test HTTP mode also passed again.
+  All temporary services, keys, and forwarding were cleaned up.
+- Public production TLS deployment/renewal, two-device LAN/UI acceptance, distributed
+  notification fan-out, and background push remain separate pending milestones.
+
 ## Foreground realtime delivery
 
 - Added a bearer-authenticated read-only WebSocket change feed. The foreground

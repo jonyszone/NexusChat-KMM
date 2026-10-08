@@ -6,6 +6,10 @@ authenticated Rust-backend messaging, local history, and durable retries. See
 [the authenticated messaging slice](docs/AUTHENTICATED_MESSAGING_SLICE.md) for setup,
 verification, and remaining work.
 
+Device verification includes PostgreSQL-backed HTTP/WebSocket messaging and an
+opt-in HTTPS/WSS fixture with certificate and hostname rejection tests. See the
+slice document's local TLS section for the reproducible runner.
+
 ---
 
 ## 1. Core Architecture
