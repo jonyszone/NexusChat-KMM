@@ -7,6 +7,14 @@ plugins {
     alias(libs.plugins.sqldelight)
 }
 
+tasks.withType(org.gradle.api.tasks.testing.Test).configureEach {
+    def rustFixture = providers.environmentVariable('NEXUS_RUST_FIXTURE_BIN')
+    inputs.property('rustFixtureBinary', rustFixture.orElse(''))
+    if (rustFixture.isPresent()) {
+        inputs.file(rustFixture).withPropertyName('rustFixtureBinaryContent')
+    }
+}
+
 sqldelight {
     databases {
         create("NexusChatDatabase") {
