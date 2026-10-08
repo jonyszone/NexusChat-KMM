@@ -6,10 +6,6 @@ import com.example.nexuschat.data.network.RustMessagingApi
 import com.example.nexuschat.data.network.KtorMessengerUpdates
 import com.example.nexuschat.db.NexusChatDatabase
 import com.example.nexuschat.domain.messenger.*
-import io.ktor.client.HttpClient
-import io.ktor.client.engine.okhttp.OkHttp
-import io.ktor.client.plugins.HttpTimeout
-import io.ktor.client.plugins.websocket.WebSockets
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.flow.produceIn
@@ -29,16 +25,9 @@ class AndroidLiveMessagingTest {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val namespace = "messenger_network_test_${UUID.randomUUID()}"
         val databaseName = "$namespace.db"
-        val http = HttpClient(OkHttp) {
-            followRedirects = false
-            install(WebSockets)
-            install(HttpTimeout) {
-                connectTimeoutMillis = 10_000
-                requestTimeoutMillis = 15_000
-                socketTimeoutMillis = 15_000
-            }
-        }
-        val api = RustMessagingApi(http, allowInsecureTransport = BuildConfig.DEBUG)
+        val http = testMessagingClient()
+        val allowHttp = BuildConfig.DEBUG && endpoint!!.startsWith("http://")
+        val api = RustMessagingApi(http, allowInsecureTransport = allowHttp)
         val sessions = AndroidMessengerSessionStore(context, namespace)
         var driver: AndroidSqliteDriver? = null
         var recipientFeed: ReceiveChannel<Unit>? = null
@@ -52,7 +41,7 @@ class AndroidLiveMessagingTest {
             val restored = checkNotNull(AndroidMessengerSessionStore(context, namespace).load())
             assertEquals(alice, restored)
             api.verify(restored)
-            val updates = KtorMessengerUpdates(http, allowInsecureTransport = BuildConfig.DEBUG)
+            val updates = KtorMessengerUpdates(http, allowInsecureTransport = allowHttp)
             recipientFeed = updates.events(bob).produceIn(this)
             outsiderFeed = updates.events(outsider).produceIn(this)
             withTimeout(15_000) { recipientFeed.receive(); outsiderFeed.receive() }

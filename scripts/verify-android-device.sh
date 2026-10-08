@@ -31,6 +31,15 @@ if [[ -n "${NEXUS_TEST_SERVER_URL:-}" ]]; then
     expected=4
     arguments=(-e messagingServer "$NEXUS_TEST_SERVER_URL")
 fi
+if [[ -n "${NEXUS_TEST_CA_BASE64:-}" ]]; then
+    if [[ "${NEXUS_TEST_SERVER_URL:-}" != https://* ]]; then
+        printf 'The TLS fixture requires an HTTPS endpoint.\n' >&2
+        exit 1
+    fi
+    classes+=,shafi.example.nexuschat.AndroidTlsMessagingTest
+    expected=5
+    arguments+=(-e messagingCa "$NEXUS_TEST_CA_BASE64")
+fi
 # Wake the screen without dismissing the keyguard or changing device settings.
 "$adb" -s "$ANDROID_SERIAL" shell input keyevent KEYCODE_WAKEUP
 result="$("$adb" -s "$ANDROID_SERIAL" shell am instrument -w -r \
